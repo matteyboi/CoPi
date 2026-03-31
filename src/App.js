@@ -70,6 +70,7 @@ function App() {
     }
   });
   const [chatInput, setChatInput] = useState('');
+  const [isSendingChat, setIsSendingChat] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ratingMenuOpen, setRatingMenuOpen] = useState(false);
   const [selectedRating, setSelectedRating] = useState(() => {
@@ -248,8 +249,8 @@ function App() {
     }));
   };
 
-  const handleSendMessage = () => {
-    if (!chatInput.trim()) return;
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || isSendingChat) return;
 
     const newMessage = {
       id: Date.now(),
@@ -258,27 +259,54 @@ function App() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setChatMessages([...chatMessages, newMessage]);
+    const updatedMessages = [...chatMessages, newMessage];
+    setChatMessages(updatedMessages);
     setChatInput('');
+    setIsSendingChat(true);
 
-    // Simulate a response from CoPi
-    setTimeout(() => {
-      const responses = [
-        'That\'s a great question! Let me help you with that.',
-        'I\'m here to assist you with your training. Tell me more about what you need.',
-        'Based on your training plan, here\'s what I recommend...',
-        'Good question! This relates to your current focus session.',
-      ];
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: updatedMessages,
+          context: {
+            student: syllabus.student,
+            rating: selectedRating,
+            lessonTitle: selectedSession?.title,
+          },
+        }),
+      });
 
-      const response = {
+      if (!response.ok) {
+        throw new Error('Chat service is unavailable right now.');
+      }
+
+      const data = await response.json();
+      const assistantText = data.reply || 'I could not generate a response right now.';
+
+      const responseMessage = {
         id: Date.now() + 1,
         role: 'assistant',
-        content: responses[Math.floor(Math.random() * responses.length)],
+        content: assistantText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      setChatMessages((prev) => [...prev, response]);
-    }, 800);
+      setChatMessages((prev) => [...prev, responseMessage]);
+    } catch (_error) {
+      const fallbackMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: 'CoPi could not reach the chat backend. Start the API server with `npm run server` (or `npm run dev`).',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setChatMessages((prev) => [...prev, fallbackMessage]);
+    } finally {
+      setIsSendingChat(false);
+    }
   };
 
   if (dataLoading) {
@@ -690,14 +718,15 @@ function App() {
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  disabled={isSendingChat}
                 />
                 <button
                   className="chat-send-button"
                   onClick={handleSendMessage}
                   type="button"
-                  disabled={!chatInput.trim()}
+                  disabled={!chatInput.trim() || isSendingChat}
                 >
-                  Send
+                  {isSendingChat ? 'Sending...' : 'Send'}
                 </button>
               </div>
             </div>
