@@ -133,6 +133,7 @@ function App() {
     : null;
   const latestOralSession = oralSessions[oralSessions.length - 1] ?? null;
   const latestProgressSnapshot = progressHistory[progressHistory.length - 1] ?? null;
+  const displayedRating = (syllabus.track ?? '').replace(/\s*training\s*plan\s*$/i, '').trim() || syllabus.track;
 
   const filteredPhases = phasesWithProgress
     .map((phase) => {
@@ -305,7 +306,7 @@ function App() {
               </div>
             )}
             
-            <span className="hero-label">Pilot</span>
+            <span className="hero-rating-pill">{displayedRating}</span>
             <strong>{syllabus.student}</strong>
             {nextSession ? (
               <>
