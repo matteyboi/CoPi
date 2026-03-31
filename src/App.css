@@ -57,6 +57,16 @@
   color: #94a3b8;
 }
 
+.hero-panel strong {
+  display: block;
+}
+
+.hero-student-name {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1;
+}
+
 .hero-panel-copy {
   margin: 12px 0 0;
   line-height: 1.6;
@@ -66,10 +76,6 @@
   max-width: 60ch;
   margin: 18px 0 0;
   line-height: 1.7;
-}
-
-.hero-panel strong {
-  display: block;
 }
 
 .hero-panel {
@@ -171,8 +177,8 @@
 .hero-rating-pill {
   display: inline-flex;
   align-items: center;
-  margin-top: 0;
-  margin-bottom: 8px;
+  margin-top: 10px;
+  margin-bottom: 4px;
   padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid rgba(234, 88, 12, 0.35);
@@ -182,6 +188,67 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  width: fit-content;
+}
+
+.hero-rating-wrap {
+  position: relative;
+  width: fit-content;
+}
+
+.hero-rating-toggle {
+  cursor: pointer;
+  gap: 8px;
+}
+
+.hero-rating-caret {
+  font-size: 0.7rem;
+  color: #fdba74;
+}
+
+.hero-rating-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 220px;
+  background: rgba(11, 18, 32, 0.96);
+  border: 1px solid rgba(234, 88, 12, 0.28);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(2, 6, 23, 0.45);
+  padding: 6px;
+  z-index: 12;
+}
+
+.hero-rating-option {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.hero-rating-option:hover {
+  background: rgba(194, 65, 12, 0.15);
+  color: #fdba74;
+}
+
+.hero-rating-option.active {
+  background: rgba(194, 65, 12, 0.2);
+  color: #fdba74;
+}
+
+.coming-soon-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(234, 88, 12, 0.3);
+  background: rgba(194, 65, 12, 0.14);
+  color: #fdba74;
+  font-size: 0.9rem;
 }
 
 .next-label {
@@ -235,6 +302,14 @@
 .tab-button.active {
   color: #7dd3fc;
   border-bottom-color: #7dd3fc;
+}
+
+.status-button:disabled,
+.ghost-button:disabled,
+.session-notes:read-only,
+.checklist-item input:disabled + span {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .tabs-nav-bottom {

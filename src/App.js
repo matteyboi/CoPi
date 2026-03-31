@@ -5,6 +5,7 @@ import { initializeData, oralSessions as defaultOralSessions, progressHistory as
 const STORAGE_KEY = 'ai-flight-syllabus-progress-v1';
 const NOTES_STORAGE_KEY = 'ai-flight-syllabus-notes-v1';
 const CHECKLIST_STORAGE_KEY = 'ai-flight-syllabus-checklist-v1';
+const RATING_STORAGE_KEY = 'ai-flight-syllabus-rating-v1';
 
 const statusLabel = {
   completed: 'Completed',
@@ -70,6 +71,14 @@ function App() {
   });
   const [chatInput, setChatInput] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [ratingMenuOpen, setRatingMenuOpen] = useState(false);
+  const [selectedRating, setSelectedRating] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'Private Pilot';
+    }
+
+    return window.localStorage.getItem(RATING_STORAGE_KEY) ?? 'Private Pilot';
+  });
 
   useEffect(() => {
     initializeData().then((data) => {
@@ -97,14 +106,22 @@ function App() {
   }, [chatMessages]);
 
   useEffect(() => {
+    window.localStorage.setItem(RATING_STORAGE_KEY, selectedRating);
+  }, [selectedRating]);
+
+  useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuOpen && !e.target.closest('.hero-menu-button') && !e.target.closest('.hero-menu-dropdown')) {
         setMenuOpen(false);
       }
+
+      if (ratingMenuOpen && !e.target.closest('.hero-rating-toggle') && !e.target.closest('.hero-rating-dropdown')) {
+        setRatingMenuOpen(false);
+      }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [menuOpen]);
+  }, [menuOpen, ratingMenuOpen]);
 
   const phasesWithProgress = useMemo(
     () =>
@@ -133,7 +150,8 @@ function App() {
     : null;
   const latestOralSession = oralSessions[oralSessions.length - 1] ?? null;
   const latestProgressSnapshot = progressHistory[progressHistory.length - 1] ?? null;
-  const displayedRating = (syllabus.track ?? '').replace(/\s*training\s*plan\s*$/i, '').trim() || syllabus.track;
+
+  const isInstrumentComingSoon = selectedRating === 'Instrument - Coming Soon';
 
   const filteredPhases = phasesWithProgress
     .map((phase) => {
@@ -306,8 +324,43 @@ function App() {
               </div>
             )}
             
-            <span className="hero-rating-pill">{displayedRating}</span>
-            <strong>{syllabus.student}</strong>
+            <strong className="hero-student-name">{syllabus.student}</strong>
+            <div className="hero-rating-wrap">
+              <button
+                className="hero-rating-pill hero-rating-toggle"
+                type="button"
+                onClick={() => setRatingMenuOpen((isOpen) => !isOpen)}
+                aria-expanded={ratingMenuOpen}
+              >
+                {selectedRating}
+                <span className="hero-rating-caret">▾</span>
+              </button>
+
+              {ratingMenuOpen ? (
+                <div className="hero-rating-dropdown">
+                  <button
+                    type="button"
+                    className={`hero-rating-option ${selectedRating === 'Private Pilot' ? 'active' : ''}`}
+                    onClick={() => {
+                      setSelectedRating('Private Pilot');
+                      setRatingMenuOpen(false);
+                    }}
+                  >
+                    Private Pilot
+                  </button>
+                  <button
+                    type="button"
+                    className={`hero-rating-option ${selectedRating === 'Instrument - Coming Soon' ? 'active' : ''}`}
+                    onClick={() => {
+                      setSelectedRating('Instrument - Coming Soon');
+                      setRatingMenuOpen(false);
+                    }}
+                  >
+                    Instrument - Coming Soon
+                  </button>
+                </div>
+              ) : null}
+            </div>
             {nextSession ? (
               <>
                 <span className="hero-label next-label">Next session</span>
@@ -416,12 +469,16 @@ function App() {
                       Clear filters
                     </button>
                   ) : null}
-                  <button className="ghost-button" type="button" onClick={resetProgress}>
+                  <button className="ghost-button" type="button" onClick={resetProgress} disabled={isInstrumentComingSoon}>
                     Reset progress
                   </button>
                 </div>
               </div>
             </section>
+
+            {isInstrumentComingSoon ? (
+              <div className="coming-soon-banner">Instrument training tools are coming soon. Syllabus editing is temporarily disabled.</div>
+            ) : null}
 
             <div className="phase-grid">
               {filteredPhases.map((phase) => (
@@ -459,6 +516,7 @@ function App() {
                                   type="button"
                                   className={`status-button ${session.status === status ? 'active' : ''}`}
                                   onClick={() => updateSessionStatus(session.id, status)}
+                                  disabled={isInstrumentComingSoon}
                                 >
                                   {statusLabel[status]}
                                 </button>
@@ -515,6 +573,7 @@ function App() {
                           type="checkbox"
                           checked={Boolean(selectedChecklistState[item])}
                           onChange={() => toggleChecklistItem(selectedSession.id, item)}
+                          disabled={isInstrumentComingSoon}
                         />
                         <span>{item}</span>
                       </label>
@@ -532,6 +591,7 @@ function App() {
                     rows="7"
                     value={sessionNotes[selectedSession.id] ?? ''}
                     onChange={(event) => updateSessionNote(selectedSession.id, event.target.value)}
+                    readOnly={isInstrumentComingSoon}
                     placeholder="Capture takeaways, instructor notes, weak spots, or questions for next time."
                   />
                 </section>
