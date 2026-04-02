@@ -13,6 +13,7 @@ const LEGACY_CHAT_STORAGE_KEY = 'ai-flight-syllabus-chat-v1';
 const CHAT_CONTEXT_STORAGE_KEY = 'ai-flight-syllabus-chat-context-v1';
 const STUDENT_NAME_STORAGE_KEY = 'ai-flight-syllabus-student-name-v1';
 const STUDENT_PROFILES_STORAGE_KEY = 'ai-flight-syllabus-student-profiles-v1';
+const STUDENT_PHOTO_MAX_SIZE_BYTES = 3 * 1024 * 1024;
 const CLEAR_UNDO_TIMEOUT_MS = 5000;
 
 const statusLabel = {
@@ -231,12 +232,14 @@ function App() {
   const [confirmModal, setConfirmModal] = useState(null);
   const [promptModal, setPromptModal] = useState(null);
   const [promptValue, setPromptValue] = useState('');
+  const [studentPhoto, setStudentPhoto] = useState(null);
   const chatMessagesRef = useRef(null);
   const wasNearBottomRef = useRef(true);
   const previousThreadIdRef = useRef(null);
   const clearUndoTimeoutRef = useRef(null);
   const hasInitializedStudentProfileRef = useRef(false);
   const importProfilesInputRef = useRef(null);
+  const studentPhotoInputRef = useRef(null);
 
   const openConfirmModal = ({ title, body, confirmLabel = 'Confirm', danger = false, onConfirm }) => {
     setConfirmModal({ title, body, confirmLabel, danger, onConfirm });
@@ -256,6 +259,7 @@ function App() {
       setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createDefaultChatThread()]);
       setActiveChatThreadId(profile.activeChatThreadId ?? 'chat-default');
       setUseLessonContext(profile.useLessonContext ?? true);
+      setStudentPhoto(profile.studentPhoto ?? null);
       return;
     }
 
@@ -267,6 +271,7 @@ function App() {
     setChatThreads([starterThread]);
     setActiveChatThreadId(starterThread.id);
     setUseLessonContext(true);
+    setStudentPhoto(null);
   }, []);
 
   useEffect(() => {
@@ -333,6 +338,7 @@ function App() {
       setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createDefaultChatThread()]);
       setActiveChatThreadId(profile.activeChatThreadId ?? 'chat-default');
       setUseLessonContext(profile.useLessonContext ?? true);
+      setStudentPhoto(profile.studentPhoto ?? null);
       return;
     }
 
@@ -344,6 +350,7 @@ function App() {
     setChatThreads([starterThread]);
     setActiveChatThreadId(starterThread.id);
     setUseLessonContext(true);
+    setStudentPhoto(null);
   }, [activeStudentName, dataLoading]);
 
   useEffect(() => {
@@ -361,6 +368,7 @@ function App() {
       chatThreads,
       activeChatThreadId,
       useLessonContext,
+      studentPhoto,
     };
     writeStudentProfiles(profiles);
   }, [
@@ -372,6 +380,7 @@ function App() {
     sessionChecklist,
     sessionNotes,
     sessionStatuses,
+    studentPhoto,
     useLessonContext,
   ]);
 
@@ -1360,6 +1369,48 @@ function App() {
     importProfilesInputRef.current?.click();
   };
 
+  const openStudentPhotoPicker = () => {
+    studentPhotoInputRef.current?.click();
+  };
+
+  const updateStudentPhoto = async (event) => {
+    const selectedFile = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!selectedFile) {
+      return;
+    }
+
+    if (!selectedFile.type.startsWith('image/')) {
+      setNoteToastMessage('Please select an image file.');
+      return;
+    }
+
+    if (selectedFile.size > STUDENT_PHOTO_MAX_SIZE_BYTES) {
+      setNoteToastMessage('Image is too large. Please use a file under 3MB.');
+      return;
+    }
+
+    try {
+      const imageData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Could not read image'));
+        reader.readAsDataURL(selectedFile);
+      });
+
+      if (!imageData) {
+        setNoteToastMessage('Could not load image. Please try again.');
+        return;
+      }
+
+      setStudentPhoto(imageData);
+      setNoteToastMessage('Student photo updated.');
+    } catch {
+      setNoteToastMessage('Could not load image. Please try again.');
+    }
+  };
+
   const importStudentProfiles = async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -1450,12 +1501,10 @@ function App() {
     <div className="App">
       <main className="dashboard-shell">
         <section className="hero-card">
-          <div>
+          <div className="hero-brand-wrap">
             <img src={copiLogo} alt="CoPi" className="hero-logo" />
             <p className="eyebrow hero-companion-tagline">Your flight training companion</p>
-          </div>
 
-          <div className="hero-panel">
             <button
               className="hero-menu-button"
               onClick={handleMenuToggle}
@@ -1474,7 +1523,15 @@ function App() {
               style={{ display: 'none' }}
               onChange={importStudentProfiles}
             />
-            
+
+            <input
+              ref={studentPhotoInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={updateStudentPhoto}
+            />
+
             {showUserDropdown && (
               <div className="hero-user-dropdown">
                 <button
@@ -1538,7 +1595,7 @@ function App() {
                 </div>
               </div>
             )}
-            
+
             {menuOpen && !showUserDropdown && !showSettingsDropdown && !showHelpPanel && (
               <div className="hero-menu-dropdown">
                 <button type="button" onClick={switchUser}>Switch user</button>
@@ -1548,8 +1605,35 @@ function App() {
                 <button type="button" className="menu-item-muted" disabled>Local mode only</button>
               </div>
             )}
-            
-            <strong className="hero-student-name">{syllabus.student}</strong>
+          </div>
+
+          <div className="hero-panel">
+            <div className="hero-student-header">
+              <strong className="hero-student-name">{syllabus.student}</strong>
+              <button
+                type="button"
+                className="hero-student-photo-button"
+                onClick={openStudentPhotoPicker}
+                aria-label={studentPhoto ? 'Change student photo' : 'Upload student photo'}
+                title={studentPhoto ? 'Change photo' : 'Upload photo'}
+              >
+                {studentPhoto ? (
+                  <img src={studentPhoto} alt={`${syllabus.student} profile`} className="hero-student-photo-image" />
+                ) : (
+                  <svg
+                    className="hero-student-photo-icon"
+                    viewBox="0 0 64 64"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <rect x="10" y="20" width="44" height="30" rx="8" className="camera-outline" />
+                    <path d="M21 20l4-6h14l4 6" className="camera-outline" />
+                    <circle cx="32" cy="35" r="9" className="camera-outline" />
+                    <circle cx="46" cy="26" r="1.8" className="camera-dot" />
+                  </svg>
+                )}
+              </button>
+            </div>
             <div className="hero-rating-wrap">
               <button
                 className="hero-rating-pill hero-rating-toggle"
@@ -1586,14 +1670,6 @@ function App() {
                 </div>
               ) : null}
             </div>
-            {nextSession ? (
-              <>
-                <span className="hero-label next-label">Next session</span>
-                <h2>{nextSession.title}</h2>
-              </>
-            ) : (
-              <p>All sessions complete.</p>
-            )}
           </div>
         </section>
 
