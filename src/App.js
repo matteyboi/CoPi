@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import copiLogo from './7F5D28DA-9DA4-47A8-83DA-F88671CB6067-removebg-preview.png';
 import { initializeData, oralSessions as defaultOralSessions, progressHistory as defaultProgressHistory, syllabus as defaultSyllabus } from './data/syllabusData';
@@ -14,6 +14,9 @@ const CHAT_CONTEXT_STORAGE_KEY = 'ai-flight-syllabus-chat-context-v1';
 const STUDENT_NAME_STORAGE_KEY = 'ai-flight-syllabus-student-name-v1';
 const STUDENT_PROFILES_STORAGE_KEY = 'ai-flight-syllabus-student-profiles-v1';
 const STUDENT_PHOTO_MAX_SIZE_BYTES = 3 * 1024 * 1024;
+const LESSON_DAYS_STORAGE_KEY = 'ai-flight-syllabus-lesson-days-v1';
+const INSTRUCTOR_PIN_STORAGE_KEY = 'ai-flight-syllabus-instructor-pin-v1';
+const BRIEFING_CACHE_STORAGE_KEY = 'ai-flight-syllabus-briefing-v1';
 const CLEAR_UNDO_TIMEOUT_MS = 5000;
 
 const statusLabel = {
@@ -111,9 +114,19 @@ function App() {
       return {};
     }
   });
-  const [phaseFilter, setPhaseFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [sessionDraftStatuses, setSessionDraftStatuses] = useState(() => {
+    if (typeof window === 'undefined') {
+      return {};
+    }
+
+    try {
+      return JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}');
+    } catch {
+      return {};
+    }
+  });
+  const [sessionRatings, setSessionRatings] = useState({});
+  const [sessionDraftRatings, setSessionDraftRatings] = useState({});
   const [sessionNotes, setSessionNotes] = useState(() => {
     if (typeof window === 'undefined') {
       return {};
@@ -137,6 +150,7 @@ function App() {
     }
   });
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [expandedStageIds, setExpandedStageIds] = useState({});
   const [chatThreads, setChatThreads] = useState(() => {
     if (typeof window === 'undefined') {
       return [
@@ -233,6 +247,25 @@ function App() {
   const [promptModal, setPromptModal] = useState(null);
   const [promptValue, setPromptValue] = useState('');
   const [studentPhoto, setStudentPhoto] = useState(null);
+  const [lessonDays, setLessonDays] = useState(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return JSON.parse(window.localStorage.getItem(LESSON_DAYS_STORAGE_KEY) ?? '[]');
+    } catch { return []; }
+  });
+  const [logDayOpen, setLogDayOpen] = useState(false);
+  const [logDayTasks, setLogDayTasks] = useState({});
+  const [logDayNote, setLogDayNote] = useState('');
+  const [expandedHistoryId, setExpandedHistoryId] = useState(null);
+  const [instructorMode, setInstructorMode] = useState(false);
+  const [plannedSessionIds, setPlannedSessionIds] = useState([]);
+  const [plannedDraftSessionIds, setPlannedDraftSessionIds] = useState([]);
+  const [instructorPinModal, setInstructorPinModal] = useState(null);
+  const [pinInput, setPinInput] = useState('');
+  const [pinConfirmInput, setPinConfirmInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [dashboardBriefing, setDashboardBriefing] = useState(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
   const chatMessagesRef = useRef(null);
   const wasNearBottomRef = useRef(true);
   const previousThreadIdRef = useRef(null);
@@ -252,9 +285,17 @@ function App() {
 
   const hydrateStudentProfile = useCallback((profile) => {
     if (profile) {
-      setSessionStatuses(profile.sessionStatuses ?? {});
+      const savedStatuses = profile.sessionStatuses ?? {};
+      setSessionStatuses(savedStatuses);
+      setSessionDraftStatuses(savedStatuses);
+      const savedRatings = profile.sessionRatings ?? {};
+      setSessionRatings(savedRatings);
+      setSessionDraftRatings(savedRatings);
       setSessionNotes(profile.sessionNotes ?? {});
       setSessionChecklist(profile.sessionChecklist ?? {});
+      const plannedIds = Array.isArray(profile.plannedSessionIds) ? profile.plannedSessionIds : [];
+      setPlannedSessionIds(plannedIds);
+      setPlannedDraftSessionIds(plannedIds);
       setSelectedRating(profile.selectedRating ?? 'Private Pilot');
       setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createDefaultChatThread()]);
       setActiveChatThreadId(profile.activeChatThreadId ?? 'chat-default');
@@ -264,8 +305,13 @@ function App() {
     }
 
     setSessionStatuses({});
+    setSessionDraftStatuses({});
+    setSessionRatings({});
+    setSessionDraftRatings({});
     setSessionNotes({});
     setSessionChecklist({});
+    setPlannedSessionIds([]);
+    setPlannedDraftSessionIds([]);
     setSelectedRating('Private Pilot');
     const starterThread = createDefaultChatThread();
     setChatThreads([starterThread]);
@@ -315,6 +361,20 @@ function App() {
   }, [useLessonContext]);
 
   useEffect(() => {
+    window.localStorage.setItem(LESSON_DAYS_STORAGE_KEY, JSON.stringify(lessonDays));
+  }, [lessonDays]);
+
+  // Load cached briefing when student switches
+  useEffect(() => {
+    try {
+      const cache = JSON.parse(window.localStorage.getItem(BRIEFING_CACHE_STORAGE_KEY) ?? '{}');
+      setDashboardBriefing(cache[normalizeStudentKey(activeStudentName)] ?? null);
+    } catch {
+      setDashboardBriefing(null);
+    }
+  }, [activeStudentName]);
+
+  useEffect(() => {
     if (dataLoading) {
       return;
     }
@@ -331,9 +391,17 @@ function App() {
     }
 
     if (profile) {
-      setSessionStatuses(profile.sessionStatuses ?? {});
+      const savedStatuses = profile.sessionStatuses ?? {};
+      setSessionStatuses(savedStatuses);
+      setSessionDraftStatuses(savedStatuses);
+      const savedRatings = profile.sessionRatings ?? {};
+      setSessionRatings(savedRatings);
+      setSessionDraftRatings(savedRatings);
       setSessionNotes(profile.sessionNotes ?? {});
       setSessionChecklist(profile.sessionChecklist ?? {});
+      const plannedIds = Array.isArray(profile.plannedSessionIds) ? profile.plannedSessionIds : [];
+      setPlannedSessionIds(plannedIds);
+      setPlannedDraftSessionIds(plannedIds);
       setSelectedRating(profile.selectedRating ?? 'Private Pilot');
       setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createDefaultChatThread()]);
       setActiveChatThreadId(profile.activeChatThreadId ?? 'chat-default');
@@ -343,8 +411,13 @@ function App() {
     }
 
     setSessionStatuses({});
+    setSessionDraftStatuses({});
+    setSessionRatings({});
+    setSessionDraftRatings({});
     setSessionNotes({});
     setSessionChecklist({});
+    setPlannedSessionIds([]);
+    setPlannedDraftSessionIds([]);
     setSelectedRating('Private Pilot');
     const starterThread = createDefaultChatThread();
     setChatThreads([starterThread]);
@@ -362,8 +435,10 @@ function App() {
     profiles[normalizeStudentKey(activeStudentName)] = {
       studentName: activeStudentName,
       sessionStatuses,
+      sessionRatings,
       sessionNotes,
       sessionChecklist,
+      plannedSessionIds,
       selectedRating,
       chatThreads,
       activeChatThreadId,
@@ -380,6 +455,8 @@ function App() {
     sessionChecklist,
     sessionNotes,
     sessionStatuses,
+    sessionRatings,
+    plannedSessionIds,
     studentPhoto,
     useLessonContext,
   ]);
@@ -498,22 +575,54 @@ function App() {
         ...phase,
         sessions: phase.sessions.map((session) => ({
           ...session,
-          status: sessionStatuses[session.id] ?? session.status,
+          status: sessionStatuses[session.id] ?? null,
+          rating: sessionRatings[session.id] ?? null,
         })),
       })),
-    [syllabus.phases, sessionStatuses]
+    [sessionRatings, sessionStatuses, syllabus.phases]
   );
 
   const allSessions = phasesWithProgress.flatMap((phase) => phase.sessions);
+  const plannedSessionIdSet = useMemo(() => new Set(plannedSessionIds), [plannedSessionIds]);
+  const plannedDraftSessionIdSet = useMemo(() => new Set(plannedDraftSessionIds), [plannedDraftSessionIds]);
+  const plannedLessons = useMemo(
+    () => allSessions.filter((session) => plannedSessionIdSet.has(session.id)),
+    [allSessions, plannedSessionIdSet]
+  );
+  const hasPendingStatusChanges = useMemo(() => {
+    const statusKeys = new Set([...Object.keys(sessionStatuses), ...Object.keys(sessionDraftStatuses)]);
+    for (const key of statusKeys) {
+      if ((sessionStatuses[key] ?? '') !== (sessionDraftStatuses[key] ?? '')) {
+        return true;
+      }
+    }
+    return false;
+  }, [sessionDraftStatuses, sessionStatuses]);
+  const hasPendingRatingChanges = useMemo(() => {
+    const ratingKeys = new Set([...Object.keys(sessionRatings), ...Object.keys(sessionDraftRatings)]);
+    for (const key of ratingKeys) {
+      if ((sessionRatings[key] ?? null) !== (sessionDraftRatings[key] ?? null)) {
+        return true;
+      }
+    }
+    return false;
+  }, [sessionDraftRatings, sessionRatings]);
+  const hasPendingPlannedChanges = useMemo(() => {
+    if (plannedSessionIds.length !== plannedDraftSessionIds.length) {
+      return true;
+    }
+    return plannedDraftSessionIds.some((id) => !plannedSessionIdSet.has(id))
+      || plannedSessionIds.some((id) => !plannedDraftSessionIdSet.has(id));
+  }, [plannedDraftSessionIds, plannedSessionIdSet, plannedSessionIds.length]);
+  const hasPendingSyllabusChanges = hasPendingStatusChanges || hasPendingPlannedChanges || hasPendingRatingChanges;
   const completedSessions = allSessions.filter((session) => session.status === 'completed');
   const inProgressSessions = allSessions.filter((session) => session.status === 'in-progress');
-  const plannedSessions = allSessions.filter((session) => session.status === 'planned');
+  const plannedSessions = plannedLessons;
   const nextSession = inProgressSessions[0] || plannedSessions[0];
-  const completionRate = Math.round((completedSessions.length / allSessions.length) * 100);
+  const completionRate = allSessions.length
+    ? Math.round((completedSessions.length / allSessions.length) * 100)
+    : 0;
   const ratedSessions = allSessions.filter((session) => typeof session.rating === 'number');
-  const phaseOptions = syllabus.phases.map((phase) => phase.title);
-  const typeOptions = [...new Set(allSessions.map((session) => session.type))];
-  const hasActiveFilters = phaseFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all';
   const averageLessonRating = ratedSessions.length
     ? (ratedSessions.reduce((total, session) => total + session.rating, 0) / ratedSessions.length).toFixed(1)
     : null;
@@ -522,22 +631,54 @@ function App() {
 
   const isInstrumentComingSoon = selectedRating === 'Instrument - Coming Soon';
 
-  const filteredPhases = phasesWithProgress
-    .map((phase) => {
-      const matchesPhase = phaseFilter === 'all' || phase.title === phaseFilter;
-      const sessions = phase.sessions.filter((session) => {
-        const matchesStatus = statusFilter === 'all' || session.status === statusFilter;
-        const matchesType = typeFilter === 'all' || session.type === typeFilter;
+  const phaseProgress = useMemo(() => {
+      const total = phasesWithProgress.reduce((sum, phase) => sum + phase.sessions.length, 0);
+      let cumulative = 0;
 
-        return matchesPhase && matchesStatus && matchesType;
+      return phasesWithProgress.map((phase) => {
+        const completedCount = phase.sessions.filter((session) => session.status === 'completed').length;
+        const totalCount = phase.sessions.length;
+        cumulative += totalCount;
+
+        return {
+          id: phase.id,
+          title: phase.title,
+          isCompleted: totalCount > 0 && completedCount === totalCount,
+          positionPercent: total > 0 ? Math.round((cumulative / total) * 100) : 0,
+        };
+      });
+    }, [phasesWithProgress]);
+  const completedPhaseCount = phaseProgress.filter((phase) => phase.isCompleted).length;
+
+  const phaseLockStates = useMemo(() => {
+    let allPreviousComplete = true;
+    return phasesWithProgress.map((phase) => {
+      const isCompleted = phase.sessions.length > 0 && phase.sessions.every((session) => session.status === 'completed');
+      const isLocked = !allPreviousComplete;
+      if (!isCompleted) {
+        allPreviousComplete = false;
+      }
+      return { id: phase.id, isCompleted, isLocked };
+    });
+  }, [phasesWithProgress]);
+
+  useEffect(() => {
+    const firstUnlockedId = phaseLockStates.find((stage) => !stage.isLocked)?.id;
+    setExpandedStageIds((current) => {
+      const next = {};
+      phaseLockStates.forEach((stage) => {
+        if (!stage.isLocked && current[stage.id]) {
+          next[stage.id] = true;
+        }
       });
 
-      return {
-        ...phase,
-        sessions,
-      };
-    })
-    .filter((phase) => phase.sessions.length > 0);
+      if (!Object.keys(next).length && firstUnlockedId) {
+        next[firstUnlockedId] = true;
+      }
+
+      return next;
+    });
+  }, [phaseLockStates]);
 
   const selectedSessionId = allSessions
     .find((session) => session.status === 'in-progress' || session.status === 'planned')?.id ?? allSessions[0]?.id;
@@ -552,6 +693,7 @@ function App() {
 
   const selectedChecklistState = selectedSession ? sessionChecklist[selectedSession.id] ?? {} : {};
   const selectedChecklistCompleted = selectedSession?.checklist?.filter((item) => selectedChecklistState[item]).length ?? 0;
+  const hasBriefingInput = lessonDays.some((day) => day.note || day.tasks.some((task) => task.rating != null));
   const visibleChatThreads = useMemo(
     () => [...chatThreads].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
     [chatThreads]
@@ -691,36 +833,6 @@ function App() {
     ]
   );
 
-  const stats = [
-    {
-      label: 'Completion',
-      value: `${completionRate}%`,
-      helper: `${completedSessions.length} of ${allSessions.length} sessions complete`,
-    },
-    {
-      label: 'Lesson Ratings',
-      value: ratedSessions.length,
-      helper: `${averageLessonRating ? `${averageLessonRating}/5 avg` : 'No ratings yet'}`,
-    },
-    {
-      label: 'Latest Oral',
-      value: latestOralSession ? `${latestOralSession.pct}%` : '—',
-      helper: latestOralSession ? latestOralSession.topic : 'No oral reviews logged yet',
-    },
-    {
-      label: 'Snapshot',
-      value: latestProgressSnapshot ? `${latestProgressSnapshot.completion_pct}%` : '—',
-      helper: latestProgressSnapshot
-        ? `${latestProgressSnapshot.completed_lessons}/${latestProgressSnapshot.total_lessons} lessons in history`
-        : 'No progress snapshots saved yet',
-    },
-    {
-      label: 'Remaining',
-      value: plannedSessions.length,
-      helper: 'Queued sessions ready to schedule',
-    },
-  ];
-
   const handleChatMessagesScroll = () => {
     const node = chatMessagesRef.current;
     if (!node) {
@@ -750,20 +862,193 @@ function App() {
   }, [activeTab, activeChatThreadId, chatMessages.length]);
 
   const updateSessionStatus = (sessionId, nextStatus) => {
-    setSessionStatuses((currentStatuses) => ({
+    if (!instructorMode) {
+      return;
+    }
+    setSessionDraftStatuses((currentStatuses) => ({
       ...currentStatuses,
       [sessionId]: nextStatus,
     }));
   };
 
-  const resetProgress = () => {
-    setSessionStatuses({});
+  const clearSessionDraftStatus = (sessionId) => {
+    if (!instructorMode) {
+      return;
+    }
+    setSessionDraftStatuses((currentStatuses) => ({
+      ...currentStatuses,
+      [sessionId]: null,
+    }));
   };
 
-  const clearFilters = () => {
-    setPhaseFilter('all');
-    setStatusFilter('all');
-    setTypeFilter('all');
+  const setSessionDraftRating = (sessionId, rating) => {
+    if (!instructorMode) {
+      return;
+    }
+    setSessionDraftRatings((currentRatings) => ({
+      ...currentRatings,
+      [sessionId]: rating,
+    }));
+  };
+
+  const togglePlannedDraftStatus = (sessionId) => {
+    setPlannedDraftSessionIds((current) => (
+      current.includes(sessionId)
+        ? current.filter((id) => id !== sessionId)
+        : [...current, sessionId]
+    ));
+  };
+
+  const clearPlannedDraftStatus = (sessionId) => {
+    setPlannedDraftSessionIds((current) => current.filter((id) => id !== sessionId));
+  };
+
+  const saveSyllabusChanges = () => {
+    if (!instructorMode) {
+      return;
+    }
+    setSessionStatuses(sessionDraftStatuses);
+    setSessionRatings(sessionDraftRatings);
+    setPlannedSessionIds(plannedDraftSessionIds);
+    setNoteToastMessage('Syllabus changes saved.');
+  };
+
+  const getStoredPinHash = () => window.localStorage.getItem(INSTRUCTOR_PIN_STORAGE_KEY) ?? null;
+  const hashPin = (pin) => btoa(pin + ':copi-instructor');
+
+  const generateBriefing = async (updatedDays) => {
+    const daysWithData = updatedDays.filter((d) => d.note || d.tasks.some((t) => t.rating != null));
+    if (!daysWithData.length) return;
+    setBriefingLoading(true);
+    const currentStage = phasesWithProgress.find((p) =>
+      !p.sessions.every((s) => s.status === 'completed')
+    )?.title || 'Private Pilot Training';
+    const recentDays = daysWithData.slice(0, 5);
+    const upcomingPlanned = plannedSessions.slice(0, 3).map((s) => ({
+      title: s.title,
+      stageTitle: s.stageTitle,
+    }));
+    try {
+      const response = await fetch('/api/briefing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student: activeStudentName,
+          stage: currentStage,
+          recentDays,
+          plannedSessions: upcomingPlanned,
+        }),
+      });
+      const data = await response.json();
+      if (data.briefing) {
+        setDashboardBriefing(data.briefing);
+        try {
+          const cache = JSON.parse(window.localStorage.getItem(BRIEFING_CACHE_STORAGE_KEY) ?? '{}');
+          cache[normalizeStudentKey(activeStudentName)] = data.briefing;
+          window.localStorage.setItem(BRIEFING_CACHE_STORAGE_KEY, JSON.stringify(cache));
+        } catch {}
+      }
+    } catch {
+      // Briefing is non-critical — fail silently
+    } finally {
+      setBriefingLoading(false);
+    }
+  };
+
+  const openInstructorLogin = () => {
+    setMenuOpen(false);
+    setPinInput('');
+    setPinConfirmInput('');
+    setPinError('');
+    const hasPin = !!getStoredPinHash();
+    setInstructorPinModal({ mode: hasPin ? 'enter' : 'set' });
+  };
+
+  const submitInstructorPin = () => {
+    if (instructorPinModal?.mode === 'set') {
+      if (pinInput.length < 4) { setPinError('PIN must be at least 4 characters.'); return; }
+      if (pinInput !== pinConfirmInput) { setPinError('PINs do not match.'); return; }
+      window.localStorage.setItem(INSTRUCTOR_PIN_STORAGE_KEY, hashPin(pinInput));
+      setInstructorMode(true);
+      setInstructorPinModal(null);
+    } else {
+      if (hashPin(pinInput) === getStoredPinHash()) {
+        setInstructorMode(true);
+        setInstructorPinModal(null);
+      } else {
+        setPinError('Incorrect PIN.');
+        setPinInput('');
+      }
+    }
+  };
+
+  const lockInstructorMode = () => {
+    setInstructorMode(false);
+    setMenuOpen(false);
+  };
+
+  const openLogDay = () => {
+    const initial = {};
+    allSessions.forEach((s) => {
+      initial[s.id] = {
+        title: s.title,
+        stageTitle: s.stageTitle,
+        included: s.status === 'in-progress',
+        rating: null,
+      };
+    });
+    setLogDayTasks(initial);
+    setLogDayNote('');
+    setLogDayOpen(true);
+  };
+
+  const cancelLogDay = () => {
+    setLogDayOpen(false);
+    setLogDayTasks({});
+    setLogDayNote('');
+  };
+
+  const toggleLogTask = (sessionId) => {
+    setLogDayTasks((current) => ({
+      ...current,
+      [sessionId]: { ...current[sessionId], included: !current[sessionId].included },
+    }));
+  };
+
+  const setLogTaskRating = (sessionId, rating) => {
+    if (!instructorMode) {
+      return;
+    }
+    setLogDayTasks((current) => ({
+      ...current,
+      [sessionId]: { ...current[sessionId], rating },
+    }));
+  };
+
+  const saveLessonDay = () => {
+    const includedTasks = Object.entries(logDayTasks)
+      .filter(([, t]) => t.included)
+      .map(([sessionId, t]) => ({
+        sessionId,
+        title: t.title,
+        stageTitle: t.stageTitle,
+        rating: t.rating,
+      }));
+    if (!includedTasks.length) {
+      cancelLogDay();
+      return;
+    }
+    const entry = {
+      id: `day-${Date.now()}`,
+      date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      savedAt: new Date().toISOString(),
+      tasks: includedTasks,
+      note: logDayNote.trim(),
+    };
+    const allUpdatedDays = [entry, ...lessonDays];
+    setLessonDays(allUpdatedDays);
+    generateBriefing(allUpdatedDays);
+    cancelLogDay();
   };
 
   const updateSessionNote = (sessionId, note) => {
@@ -1339,8 +1624,10 @@ function App() {
     profiles[normalizeStudentKey(activeStudentName)] = {
       studentName: activeStudentName,
       sessionStatuses,
+      sessionRatings,
       sessionNotes,
       sessionChecklist,
+      plannedSessionIds,
       selectedRating,
       chatThreads,
       activeChatThreadId,
@@ -1596,13 +1883,28 @@ function App() {
               </div>
             )}
 
+{instructorMode && (
+              <div className="instructor-badge">
+                <span>INSTRUCTOR</span>
+                <button type="button" className="instructor-lock-btn" onClick={lockInstructorMode} aria-label="Lock instructor mode">🔒</button>
+              </div>
+            )}
+
             {menuOpen && !showUserDropdown && !showSettingsDropdown && !showHelpPanel && (
               <div className="hero-menu-dropdown">
-                <button type="button" onClick={switchUser}>Switch user</button>
-                <button type="button" onClick={toggleSettingsDropdown}>Settings</button>
+                {instructorMode ? (
+                  <>
+                    <button type="button" onClick={switchUser}>Switch user</button>
+                    <button type="button" onClick={toggleSettingsDropdown}>Settings</button>
+                  </>
+                ) : null}
                 <button type="button" onClick={toggleHelpPanel}>Help</button>
                 <div className="menu-divider"></div>
-                <button type="button" className="menu-item-muted" disabled>Local mode only</button>
+                {instructorMode ? (
+                  <button type="button" className="menu-item-warn" onClick={lockInstructorMode}>🔒 Lock instructor mode</button>
+                ) : (
+                  <button type="button" className="menu-item-instructor" onClick={openInstructorLogin}>Instructor login</button>
+                )}
               </div>
             )}
           </div>
@@ -1670,244 +1972,362 @@ function App() {
                 </div>
               ) : null}
             </div>
+
+            <div
+              className="hero-stage-progress"
+              role="button"
+              tabIndex={0}
+              aria-label={`Training completion ${completionRate}%. Stages completed: ${completedPhaseCount} of ${phaseProgress.length}. Click to view progress.`}
+              onClick={() => setActiveTab('progress')}
+              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setActiveTab('progress')}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="hero-tube-track" role="presentation">
+                <div className="hero-tube-fill" style={{ width: `${completionRate}%` }} />
+                <div className="hero-tube-markers" aria-hidden="true">
+                  {phaseProgress.map((phase, index) => (
+                    <span
+                      key={phase.id ?? `${phase.title}-${index}`}
+                      className={`hero-tube-marker${phase.isCompleted ? ' is-complete' : ''}`}
+                      style={{ left: `${phase.positionPercent}%` }}
+                      title={phase.title}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
         {activeTab === 'dashboard' && (
           <section className="tab-content">
-            <section className="stats-grid" aria-label="Training summary">
-              {stats.map((stat) => (
-                <article className="stat-card" key={stat.label}>
-                  <span className="stat-label">{stat.label}</span>
-                  <strong className="stat-value">{stat.value}</strong>
-                  <span className="stat-helper">{stat.helper}</span>
-                </article>
-              ))}
+            <section className="planned-lessons-card">
+              <div className="planned-lessons-header">
+                <h3>Planned Lessons</h3>
+              </div>
+              {plannedLessons.length ? (
+                <ul className="planned-lessons-list">
+                  {plannedLessons.map((session) => (
+                    <li key={session.id}>{session.title}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="planned-lessons-empty">No planned lessons saved yet.</p>
+              )}
             </section>
 
-            {selectedSession ? (
-              <section className="quick-detail">
-                <div className="detail-header">
-                  <p className="eyebrow">Current focus</p>
-                  <h3>{selectedSession.title}</h3>
-                  <p>{selectedSession.focus}</p>
+            <div className="log-day-header">
+              <span className="log-day-date">
+                {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </span>
+              {!logDayOpen ? (
+                <button type="button" className="log-day-trigger" onClick={openLogDay}>
+                  + Log Lesson Day
+                </button>
+              ) : (
+                <div className="log-day-actions">
+                  <button type="button" className="log-day-cancel" onClick={cancelLogDay}>Cancel</button>
+                  <button type="button" className="log-day-save" onClick={saveLessonDay}>Save Day</button>
                 </div>
+              )}
+            </div>
 
-                <div className="detail-meta-row">
-                  <span>{selectedSession.type}</span>
-                  <span>{selectedSession.duration}</span>
-                  {typeof selectedSession.rating === 'number' ? <span>Rating {selectedSession.rating}/5</span> : null}
-                  <span className={`status-pill ${selectedSession.status}`}>{statusLabel[selectedSession.status]}</span>
+            {logDayOpen && (
+              <div className="log-day-form">
+                {phasesWithProgress.map((phase) => (
+                  <div className="log-day-phase" key={phase.id}>
+                    <p className="log-day-phase-title">{phase.title}</p>
+                    {phase.sessions.map((session) => {
+                      const task = logDayTasks[session.id];
+                      if (!task) return null;
+                      return (
+                        <div key={session.id} className={`log-day-row${task.included ? ' is-included' : ''}`}>
+                          <label className="log-day-check-label">
+                            <input
+                              type="checkbox"
+                              checked={task.included}
+                              onChange={() => toggleLogTask(session.id)}
+                            />
+                            <span className="log-day-session-name">{session.title}</span>
+                          </label>
+                          {task.included && instructorMode && (
+                            <div className="log-day-stars" aria-label={`Rating for ${session.title}`}>
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  className={`log-star${task.rating >= star ? ' active' : ''}`}
+                                  onClick={() => setLogTaskRating(session.id, star)}
+                                  aria-label={`${star} star`}
+                                >★</button>
+                              ))}
+                            </div>
+                          )}
+                          {task.included && !instructorMode && (
+                            <span className="log-day-pending-rating">Pending rating</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                <div className="log-day-note-row">
+                  <textarea
+                    className="log-day-note"
+                    placeholder="Add a note about today's lesson…"
+                    value={logDayNote}
+                    onChange={(e) => setLogDayNote(e.target.value)}
+                    rows={3}
+                  />
                 </div>
+              </div>
+            )}
 
-                <section className="detail-section">
-                  <div className="detail-section-header">
-                    <h4>Objectives</h4>
+            {!logDayOpen && (hasBriefingInput || briefingLoading || dashboardBriefing) && (
+              <div className="briefing-section">
+                {briefingLoading ? (
+                  <div className="briefing-loading">
+                    <span className="briefing-loading-dot" />
+                    <span className="briefing-loading-dot" />
+                    <span className="briefing-loading-dot" />
+                    <span className="briefing-loading-label">CoPi is preparing your briefing…</span>
                   </div>
-                  <ul className="detail-list">
-                    {selectedSession.objectives?.map((objective) => (
-                      <li key={objective}>{objective}</li>
-                    ))}
-                  </ul>
-                </section>
-
-                <section className="detail-section">
-                  <div className="detail-section-header">
-                    <h4>AI study prompt by CoPi</h4>
+                ) : dashboardBriefing ? (
+                  <>
+                    {dashboardBriefing.strengths?.length > 0 && (
+                      <div className="briefing-card briefing-strengths">
+                        <div className="briefing-card-header">
+                          <span className="briefing-icon-check">✓</span>
+                          <span className="briefing-card-title">What you're doing well</span>
+                        </div>
+                        <ul className="briefing-list">
+                          {dashboardBriefing.strengths.map((s, i) => (
+                            <li key={i} className="briefing-strength-item">{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {dashboardBriefing.focusAreas?.length > 0 && (
+                      <div className="briefing-card briefing-focus">
+                        <div className="briefing-card-header">
+                          <span className="briefing-icon-focus">⚑</span>
+                          <span className="briefing-card-title">Focus areas</span>
+                        </div>
+                        {dashboardBriefing.focusAreas.map((area, i) => (
+                          <div key={i} className="briefing-focus-item">
+                            <p className="briefing-focus-skill">{area.skill}</p>
+                            <p className="briefing-focus-fix">{area.fix}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {dashboardBriefing.upNext?.length > 0 && (
+                      <div className="briefing-card briefing-upnext">
+                        <div className="briefing-card-header">
+                          <span className="briefing-icon-next">→</span>
+                          <span className="briefing-card-title">Up next</span>
+                        </div>
+                        {dashboardBriefing.upNext.map((item, i) => (
+                          <div key={i} className="briefing-upnext-item">
+                            <p className="briefing-upnext-title">{item.title}</p>
+                            <p className="briefing-upnext-tip">{item.tip}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="briefing-refresh-btn"
+                      onClick={() => generateBriefing(lessonDays)}
+                      disabled={briefingLoading}
+                    >↻ Refresh briefing</button>
+                  </>
+                ) : hasBriefingInput ? (
+                  <div className="briefing-empty">
+                    <p className="briefing-empty-text">Every great pilot starts with day one—log your first rated lesson and CoPi will turn your progress into a personalized flight plan for growth.</p>
                   </div>
-                  <p>{selectedSession.aiPrompt}</p>
-                </section>
-              </section>
-            ) : null}
+                ) : null}
+              </div>
+            )}
           </section>
         )}
 
         {activeTab === 'syllabus' && (
           <section className="tab-content">
-            <section className="controls-card" aria-label="Filters">
-              <div className="filter-group">
-                <label className="filter-field">
-                  <span>Phase</span>
-                  <select value={phaseFilter} onChange={(event) => setPhaseFilter(event.target.value)}>
-                    <option value="all">All phases</option>
-                    {phaseOptions.map((phase) => (
-                      <option key={phase} value={phase}>
-                        {phase}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="filter-field">
-                  <span>Status</span>
-                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                    <option value="all">All statuses</option>
-                    {statusOrder.map((status) => (
-                      <option key={status} value={status}>
-                        {statusLabel[status]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="filter-field">
-                  <span>Type</span>
-                  <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-                    <option value="all">All types</option>
-                    {typeOptions.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="control-actions">
-                <div className="button-row">
-                  {hasActiveFilters ? (
-                    <button className="ghost-button" type="button" onClick={clearFilters}>
-                      Clear filters
-                    </button>
-                  ) : null}
-                  <button className="ghost-button" type="button" onClick={resetProgress} disabled={isInstrumentComingSoon}>
-                    Reset progress
-                  </button>
-                </div>
-              </div>
-            </section>
-
             {isInstrumentComingSoon ? (
               <div className="coming-soon-banner">Instrument training tools are coming soon. Syllabus editing is temporarily disabled.</div>
             ) : null}
 
-            <div className="phase-grid">
-              {filteredPhases.map((phase) => (
-                <article className="phase-card" key={phase.id}>
-                  <div className="phase-card-header">
-                    <div>
-                      <p className="phase-title">{phase.title}</p>
-                      <p className="phase-description">{phase.description}</p>
-                    </div>
-                    <span className="phase-count">{phase.sessions.length} sessions</span>
-                  </div>
-
-                  <div className="session-list">
-                    {phase.sessions.map((session) => (
-                      <div className={`session-row ${selectedSession?.id === session.id ? 'selected' : ''}`} key={session.id}>
-                        <div className="session-main">
-                          <div className={`status-dot ${session.status}`} aria-hidden="true" />
-                          <div className="session-copy">
-                            <div className="session-title-row">
-                              <h3>{session.title}</h3>
-                              <button
-                                type="button"
-                                className={`session-open-button ${selectedSession?.id === session.id ? 'active' : ''}`}
-                                onClick={() => setSelectedSession(session)}
-                              >
-                                {selectedSession?.id === session.id ? 'Selected' : 'Open'}
-                              </button>
-                            </div>
-                            <p>{session.focus}</p>
-
-                            <div className="status-actions" aria-label={`Update ${session.title} status`}>
-                              {statusOrder.map((status) => (
-                                <button
-                                  key={status}
-                                  type="button"
-                                  className={`status-button ${session.status === status ? 'active' : ''}`}
-                                  onClick={() => updateSessionStatus(session.id, status)}
-                                  disabled={isInstrumentComingSoon}
-                                >
-                                  {statusLabel[status]}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="session-meta">
-                          <span>{session.type}</span>
-                          <span>{session.duration}</span>
-                          {typeof session.rating === 'number' ? <span>Rating {session.rating}/5</span> : null}
-                          <span className={`status-pill ${session.status}`}>{statusLabel[session.status]}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            {!filteredPhases.length ? (
-              <div className="empty-state">
-                <h3>No sessions match the current filters.</h3>
-                <p>Clear the filters to show the full syllabus again.</p>
+            {instructorMode ? (
+              <div className="syllabus-save-row">
+                <button
+                  type="button"
+                  className="planned-save-button"
+                  onClick={saveSyllabusChanges}
+                  disabled={!hasPendingSyllabusChanges || isInstrumentComingSoon}
+                >
+                  Save Syllabus
+                </button>
               </div>
             ) : null}
 
-            {selectedSession ? (
-              <section className="detail-panel">
-                <div className="detail-header">
-                  <p className="eyebrow">Session detail</p>
-                  <h3>{selectedSession.title}</h3>
-                  <p>{selectedSession.focus}</p>
-                </div>
+            <div className="phase-grid">
+              {phasesWithProgress.map((phase, index) => {
+                const stageState = phaseLockStates[index] ?? { isLocked: false };
+                const isLocked = stageState.isLocked;
+                const isExpanded = Boolean(expandedStageIds[phase.id]) && !isLocked;
 
-                <div className="detail-meta-row">
-                  <span>{selectedSession.stageTitle}</span>
-                  <span>{selectedSession.type}</span>
-                  <span>{selectedSession.duration}</span>
-                  {typeof selectedSession.rating === 'number' ? <span>Rating {selectedSession.rating}/5</span> : null}
-                  <span className={`status-pill ${selectedSession.status}`}>{statusLabel[selectedSession.status]}</span>
-                </div>
+                return (
+                  <article className={`phase-card ${isLocked ? 'is-locked' : ''}`} key={phase.id}>
+                    <button
+                      type="button"
+                      className={`phase-card-header phase-dropdown-button ${isLocked ? 'is-locked' : ''}`}
+                      onClick={() => {
+                        if (isLocked) return;
+                        setExpandedStageIds((current) => ({
+                          ...current,
+                          [phase.id]: !current[phase.id],
+                        }));
+                      }}
+                      disabled={isLocked}
+                      aria-expanded={isExpanded}
+                    >
+                      <div>
+                        <p className="phase-title">{phase.title}</p>
+                        {isLocked ? <p className="phase-locked-note">Complete the previous stage to unlock.</p> : null}
+                      </div>
+                      <span className="phase-dropdown-caret">{isExpanded ? '▾' : '▸'}</span>
+                    </button>
 
-                <section className="detail-section">
-                  <div className="detail-section-header">
-                    <h4>Checklist</h4>
-                    <span>{selectedChecklistCompleted}/{selectedSession.checklist?.length ?? 0} complete</span>
-                  </div>
-                  <div className="checklist-list">
-                    {selectedSession.checklist?.map((item) => (
-                      <label className="checklist-item" key={item}>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(selectedChecklistState[item])}
-                          onChange={() => toggleChecklistItem(selectedSession.id, item)}
-                          disabled={isInstrumentComingSoon}
-                        />
-                        <span>{item}</span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
+                    {isExpanded && phase.dpeGuidance ? (
+                      <section className="phase-guidance">
+                        <p className="phase-guidance-title">DPE & FAA focus</p>
+                        <ul className="phase-guidance-list">
+                          {phase.dpeGuidance.focus?.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                        <p className="phase-guidance-ref">{phase.dpeGuidance.acsReference}</p>
+                      </section>
+                    ) : null}
 
-                <section className="detail-section">
-                  <div className="detail-section-header">
-                    <h4>Notes</h4>
-                    <div className="detail-section-actions">
-                      <span>Saved locally</span>
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={exportSelectedSessionNotes}
-                        disabled={!selectedSession}
-                      >
-                        Export notes
-                      </button>
-                    </div>
-                  </div>
-                  <textarea
-                    className="session-notes"
-                    rows="7"
-                    value={sessionNotes[selectedSession.id] ?? ''}
-                    onChange={(event) => updateSessionNote(selectedSession.id, event.target.value)}
-                    readOnly={isInstrumentComingSoon}
-                    placeholder="Capture takeaways, instructor notes, weak spots, or questions for next time."
-                  />
-                </section>
-              </section>
+                    {isExpanded ? (
+                      <div className="session-list">
+                        {phase.sessions.map((session) => (
+                          <div className="session-row" key={session.id}>
+                            <div className="session-main">
+                              <div className="session-copy">
+                                <div className="session-title-row">
+                                  <h3>{session.title}</h3>
+                                </div>
+
+                                {(() => {
+                                  const savedStatus = session.status;
+                                  const hasDraftStatus = Object.prototype.hasOwnProperty.call(sessionDraftStatuses, session.id);
+                                  const draftStatus = hasDraftStatus ? sessionDraftStatuses[session.id] : savedStatus;
+                                  const plannedIsActive = instructorMode
+                                    ? plannedDraftSessionIdSet.has(session.id)
+                                    : plannedSessionIdSet.has(session.id);
+                                  const effectiveActiveStatus = plannedIsActive ? 'planned' : (instructorMode ? draftStatus : savedStatus);
+
+                                  return (
+                                    <div className="status-actions" aria-label={`Update ${session.title} status`}>
+                                      {statusOrder.map((status) => (
+                                        <button
+                                          key={status}
+                                          type="button"
+                                          className={`status-button status-${status} ${status === effectiveActiveStatus ? 'active' : ''}`}
+                                          onClick={() => {
+                                            if (!instructorMode) {
+                                              return;
+                                            }
+                                            if (status === effectiveActiveStatus) {
+                                              if (status === 'planned') {
+                                                togglePlannedDraftStatus(session.id);
+                                                return;
+                                              }
+                                              clearPlannedDraftStatus(session.id);
+                                              clearSessionDraftStatus(session.id);
+                                              return;
+                                            }
+                                            if (status === 'planned') {
+                                              togglePlannedDraftStatus(session.id);
+                                              return;
+                                            }
+                                            clearPlannedDraftStatus(session.id);
+                                            updateSessionStatus(session.id, status);
+                                          }}
+                                          disabled={isInstrumentComingSoon || !instructorMode}
+                                        >
+                                          {statusLabel[status]}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
+
+                                {(() => {
+                                  const savedStatus = session.status;
+                                  const hasDraftStatus = Object.prototype.hasOwnProperty.call(sessionDraftStatuses, session.id);
+                                  const draftStatus = hasDraftStatus ? sessionDraftStatuses[session.id] : savedStatus;
+                                  const plannedIsActive = instructorMode
+                                    ? plannedDraftSessionIdSet.has(session.id)
+                                    : plannedSessionIdSet.has(session.id);
+                                  const effectiveActiveStatus = plannedIsActive ? 'planned' : (instructorMode ? draftStatus : savedStatus);
+
+                                  if (effectiveActiveStatus !== 'in-progress') {
+                                    return null;
+                                  }
+
+                                  const currentRating = instructorMode
+                                    ? (sessionDraftRatings[session.id] ?? 0)
+                                    : (sessionRatings[session.id] ?? 0);
+
+                                  return (
+                                    <div className="in-progress-rating-stars" aria-label={`Rating for ${session.title}`}>
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <button
+                                          key={star}
+                                          type="button"
+                                          className={`log-star${currentRating >= star ? ' active' : ''}`}
+                                          onClick={() => setSessionDraftRating(session.id, star)}
+                                          disabled={!instructorMode || isInstrumentComingSoon}
+                                          aria-label={`${star} star`}
+                                        >★</button>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+
+            {!phasesWithProgress.length ? (
+              <div className="empty-state">
+                <h3>No sessions available.</h3>
+              </div>
             ) : null}
+
+            {instructorMode ? (
+              <div className="syllabus-save-row syllabus-save-row-bottom">
+                <button
+                  type="button"
+                  className="planned-save-button"
+                  onClick={saveSyllabusChanges}
+                  disabled={!hasPendingSyllabusChanges || isInstrumentComingSoon}
+                >
+                  Save Syllabus
+                </button>
+              </div>
+            ) : null}
+
           </section>
         )}
 
@@ -2142,20 +2562,59 @@ function App() {
             Progress
           </button>
           <button
-            className={`tab-bubble blank-tab ${activeTab === 'blank' ? 'active' : ''}`}
-            onClick={() => setActiveTab('blank')}
+            className={`tab-bubble history-tab ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveTab('history')}
             type="button"
           >
-            Soon
+            History
           </button>
         </section>
 
-        {activeTab === 'blank' && (
+        {activeTab === 'history' && (
           <section className="tab-content">
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#cbd5e1' }}>
-              <p style={{ fontSize: '1.1rem', marginBottom: '12px' }}>Coming soon...</p>
-              <p style={{ color: '#94a3b8' }}>We're working on something new to help you.</p>
-            </div>
+            {lessonDays.length === 0 ? (
+              <div className="history-empty">
+                <p className="history-empty-title">No lesson days logged yet.</p>
+                <p className="history-empty-sub">Use the Dashboard to log a lesson day and rate each task.</p>
+              </div>
+            ) : (
+              <div className="history-list">
+                {lessonDays.map((day) => (
+                  <div className="history-card" key={day.id}>
+                    <button
+                      type="button"
+                      className="history-card-header"
+                      onClick={() => setExpandedHistoryId(expandedHistoryId === day.id ? null : day.id)}
+                    >
+                      <span className="history-card-date">{day.date}</span>
+                      <span className="history-card-meta">{day.tasks.length} task{day.tasks.length !== 1 ? 's' : ''}</span>
+                      <span className="history-card-caret">{expandedHistoryId === day.id ? '▲' : '▼'}</span>
+                    </button>
+                    {expandedHistoryId === day.id && (
+                      <div className="history-card-body">
+                        {day.tasks.map((task, i) => (
+                          <div className="history-task-row" key={`${task.sessionId}-${i}`}>
+                            <div className="history-task-info">
+                              <span className="history-task-stage">{task.stageTitle}</span>
+                              <span className="history-task-title">{task.title}</span>
+                            </div>
+                            <div className="history-task-stars">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <span key={star} className={`history-star${task.rating != null && task.rating >= star ? ' active' : ''}`}>★</span>
+                              ))}
+                              {task.rating == null && <span className="history-no-rating">Not rated</span>}
+                            </div>
+                          </div>
+                        ))}
+                        {day.note ? (
+                          <p className="history-card-note">{day.note}</p>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -2183,6 +2642,43 @@ function App() {
                 onClick={() => { confirmModal.onConfirm(); setConfirmModal(null); }}
               >
                 {confirmModal.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {instructorPinModal && (
+        <div className="modal-overlay pin-modal-overlay" role="dialog" aria-modal="true" onClick={() => setInstructorPinModal(null)}>
+          <div className="modal-box pin-modal-box" onClick={(e) => e.stopPropagation()}>
+            <p className="modal-title">{instructorPinModal.mode === 'set' ? 'Set Instructor PIN' : 'Instructor Login'}</p>
+            <p className="pin-modal-sub">{instructorPinModal.mode === 'set' ? 'Create a PIN to protect instructor features.' : 'Enter your instructor PIN to continue.'}</p>
+            <input
+              className="modal-input pin-input"
+              type="password"
+              inputMode="numeric"
+              placeholder={instructorPinModal.mode === 'set' ? 'New PIN' : 'PIN'}
+              value={pinInput}
+              autoFocus
+              onChange={(e) => { setPinInput(e.target.value); setPinError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitInstructorPin(); if (e.key === 'Escape') setInstructorPinModal(null); }}
+            />
+            {instructorPinModal.mode === 'set' && (
+              <input
+                className="modal-input pin-input"
+                type="password"
+                inputMode="numeric"
+                placeholder="Confirm PIN"
+                value={pinConfirmInput}
+                onChange={(e) => { setPinConfirmInput(e.target.value); setPinError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') submitInstructorPin(); if (e.key === 'Escape') setInstructorPinModal(null); }}
+              />
+            )}
+            {pinError && <p className="pin-error">{pinError}</p>}
+            <div className="modal-actions">
+              <button type="button" className="modal-btn modal-btn-cancel" onClick={() => setInstructorPinModal(null)}>Cancel</button>
+              <button type="button" className="modal-btn modal-btn-confirm" onClick={submitInstructorPin}>
+                {instructorPinModal.mode === 'set' ? 'Set PIN & Unlock' : 'Unlock'}
               </button>
             </div>
           </div>
@@ -2220,6 +2716,7 @@ function App() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

@@ -11,7 +11,6 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 app.use(express.json({ limit: '1mb' }));
 
-// ── Shared helpers ──────────────────────────────────────────────────────────
 function buildRecentMessages(messages) {
   return messages.slice(-10).map((m) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
@@ -29,11 +28,12 @@ function buildSystemPrompt(context) {
   }
   if (context.useLessonContext) {
     lines.push(`Current lesson: ${context.lessonTitle || 'Not selected'}`);
-    if (context.lessonFocus)   lines.push(`Lesson focus: ${context.lessonFocus}`);
-    if (context.lessonType)    lines.push(`Lesson type: ${context.lessonType}`);
-    if (context.lessonStatus)  lines.push(`Lesson status: ${context.lessonStatus}`);
-    if (Array.isArray(context.objectives) && context.objectives.length)
+    if (context.lessonFocus) lines.push(`Lesson focus: ${context.lessonFocus}`);
+    if (context.lessonType) lines.push(`Lesson type: ${context.lessonType}`);
+    if (context.lessonStatus) lines.push(`Lesson status: ${context.lessonStatus}`);
+    if (Array.isArray(context.objectives) && context.objectives.length) {
       lines.push(`Lesson objectives: ${context.objectives.join(' | ')}`);
+    }
     if (context.checklistProgress) lines.push(`Checklist progress: ${context.checklistProgress}`);
     if (context.notes) lines.push(`Student notes: ${String(context.notes).slice(0, 600)}`);
   } else {
@@ -56,7 +56,6 @@ async function createOpenAIResponse(payload) {
     body: JSON.stringify(payload),
   });
 }
-// ────────────────────────────────────────────────────────────────────────────
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -88,10 +87,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     const response = await createOpenAIResponse({
       model: OPENAI_MODEL,
-      input: [
-        { role: 'system', content: systemPrompt },
-        ...recentMessages,
-      ],
+      input: [{ role: 'system', content: systemPrompt }, ...recentMessages],
       temperature: 0.6,
     });
 
@@ -128,16 +124,16 @@ app.post('/api/chat/title', async (req, res) => {
 
   if (!OPENAI_API_KEY) {
     const fallback = recentMessages.find((message) => message.role === 'user')?.content || 'Conversation';
-    return res.json({ title: String(fallback).split(/[?.!]/)[0].trim().split(/\s+/).slice(0, 6).join(' ') || 'Conversation', source: 'fallback' });
+    return res.json({
+      title: String(fallback).split(/[?.!]/)[0].trim().split(/\s+/).slice(0, 6).join(' ') || 'Conversation',
+      source: 'fallback',
+    });
   }
 
   try {
     const response = await createOpenAIResponse({
       model: OPENAI_MODEL,
-      input: [
-        { role: 'system', content: systemPrompt },
-        ...recentMessages,
-      ],
+      input: [{ role: 'system', content: systemPrompt }, ...recentMessages],
       temperature: 0.3,
     });
 
@@ -156,7 +152,82 @@ app.post('/api/chat/title', async (req, res) => {
   }
 });
 
-// ── Streaming endpoint ──────────────────────────────────────────────────────
+app.post('/api/briefing', async (req, res) => {
+  const { student, stage, recentDays = [], plannedSessions = [] } = req.body ?? {};
+
+  const daysText = recentDays
+    .map((day, idx) => {
+      const taskLines = day.tasks
+        .map((t) => `  - ${t.title}${t.rating != null ? ` (rated ${t.rating}/5)` : ''}`)
+        .join('\n');
+      const noteLine = day.note ? `  Instructor note: "${day.note}"` : '';
+      return `Lesson ${idx + 1} (${day.date}):\n${taskLines}${noteLine ? '\n' + noteLine : ''}`;
+    })
+    .join('\n\n');
+
+  const plannedText = plannedSessions.map((s) => `  - ${s.title} (${s.stageTitle})`).join('\n');
+
+  const prompt = `You are CoPi, an AI flight training coach. A student pilot named ${student || 'the student'} is in the "${stage}" stage of Private Pilot training. Analyze their recent lesson data and generate a coaching briefing.
+
+Recent lessons (most recent first):
+${daysText || '(none)'}
+
+Upcoming planned sessions:
+${plannedText || '(none)'}
+
+Return ONLY valid JSON (no markdown fences, no extra text) with this exact structure:
+{
+  "strengths": ["concise strength 1", "concise strength 2"],
+  "focusAreas": [
+    { "skill": "Skill name", "fix": "Specific 2-3 sentence actionable technique correction." }
+  ],
+  "upNext": [
+    { "title": "Session title", "tip": "One sentence prep tip for this session." }
+  ]
+}
+Rules:
+- strengths: tasks rated 4 or 5 stars. Be specific about the maneuver or skill.
+- focusAreas: tasks rated 1-3 or mentioned negatively in notes. Give concrete technique-level guidance (specific control inputs, scan patterns, power settings), not generic advice. Maximum 3 items.
+- upNext: one entry per planned session (maximum 3), with a practical prep tip.
+- If there are no strengths, return an empty array. Same for focusAreas and upNext.`;
+
+  if (!OPENAI_API_KEY) {
+    return res.json({
+      briefing: {
+        strengths: ['API key not configured — connect OpenAI to enable coaching briefings.'],
+        focusAreas: [],
+        upNext: plannedSessions.slice(0, 3).map((s) => ({
+          title: s.title,
+          tip: 'Review lesson objectives before flying.',
+        })),
+      },
+      source: 'fallback',
+    });
+  }
+
+  try {
+    const response = await createOpenAIResponse({
+      model: 'gpt-4o-mini',
+      input: prompt,
+      temperature: 0.4,
+    });
+
+    if (!response.ok) {
+      const apiError = await response.text();
+      return res.status(502).json({ error: `OpenAI request failed: ${apiError}` });
+    }
+
+    const data = await response.json();
+    let text = data.output_text ?? '';
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+    const briefing = JSON.parse(text);
+    res.json({ briefing, source: 'openai' });
+  } catch (error) {
+    console.error('[/api/briefing] error:', error?.message ?? error);
+    res.status(500).json({ error: 'Failed to generate briefing.' });
+  }
+});
+
 app.post('/api/chat/stream', async (req, res) => {
   const { messages = [], context = {} } = req.body || {};
 
@@ -226,7 +297,6 @@ app.post('/api/chat/stream', async (req, res) => {
     res.end();
   }
 });
-// ────────────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
   console.log(`CoPi API listening on http://localhost:${PORT}`);
