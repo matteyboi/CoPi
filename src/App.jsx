@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import copiLogo from './7F5D28DA-9DA4-47A8-83DA-F88671CB6067-removebg-preview.png';
+import logoAI from './logoAI.png';
 import { initializeData, oralSessions as defaultOralSessions, progressHistory as defaultProgressHistory, syllabus as defaultSyllabus } from './data/syllabusData';
 
 const STORAGE_KEY = 'ai-flight-syllabus-progress-v1';
@@ -1969,6 +1970,37 @@ function App() {
 
         {activeTab === 'dashboard' && (
           <section className="tab-content">
+            <section className="ai-teaching-card">
+              <div className="ai-teaching-header">
+                <h3>Coach CoPi</h3>
+              </div>
+              <div className="ai-teaching-body">
+                {briefingLoading ? (
+                  <div className="briefing-loading">
+                    <span className="briefing-loading-dot" />
+                    <span className="briefing-loading-dot" />
+                    <span className="briefing-loading-dot" />
+                    <span className="briefing-loading-label">AI is analyzing your notes, ratings, and planned lessons…</span>
+                  </div>
+                ) : dashboardBriefing ? (
+                  <>
+                    {dashboardBriefing.upNext?.length > 0 ? (
+                      <ul className="ai-teaching-list">
+                        {dashboardBriefing.upNext.map((item, i) => (
+                          <li key={i} className="ai-teaching-item">
+                            <strong>{item.title}:</strong> {item.tip}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="ai-teaching-empty">No upcoming tasks found. Add planned lessons to get teaching tips!</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="ai-teaching-empty">Log lesson notes and ratings, and add planned lessons to receive AI-powered teaching tips for your next tasks.</p>
+                )}
+              </div>
+            </section>
             <section className="planned-lessons-card">
               <div className="planned-lessons-header">
                 <h3>Planned Lessons</h3>
@@ -2476,8 +2508,9 @@ function App() {
             className={`tab-bubble copi-tab ${activeTab === 'copi' ? 'active' : ''}`}
             onClick={() => setActiveTab('copi')}
             type="button"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
           >
-            CoPi
+            <img src={logoAI} alt="CoPi Logo" style={{ height: 72, width: 72, objectFit: 'contain' }} />
           </button>
           <button
             className={`tab-bubble ${activeTab === 'progress' ? 'active' : ''}`}

@@ -1,3 +1,39 @@
+/* AI Teaching Card Styles */
+.ai-teaching-card {
+  background: rgba(11, 18, 32, 0.85);
+  border: 1.5px solid #38bdf8;
+  border-radius: 22px;
+  margin-bottom: 32px;
+  padding: 28px 28px 20px 28px;
+  box-shadow: 0 8px 32px rgba(2, 6, 23, 0.18);
+}
+.ai-teaching-header {
+  margin-bottom: 12px;
+}
+.ai-teaching-header h3 {
+  color: #cc5500;
+  font-size: 1.3rem;
+  margin: 0;
+  text-align: center;
+  font-weight: bold;
+}
+.ai-teaching-body {
+  color: #e0f2fe;
+  font-size: 1.08rem;
+}
+.ai-teaching-list {
+  list-style: disc inside;
+  margin: 0;
+  padding-left: 0;
+}
+.ai-teaching-item {
+  margin-bottom: 10px;
+  color: #bae6fd;
+}
+.ai-teaching-empty {
+  color: #94a3b8;
+  font-style: italic;
+}
 @media (max-width: 600px) {
   .status-actions .status-button {
     min-height: 28.8px !important;
