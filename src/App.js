@@ -565,53 +565,96 @@ function App() {
   }, [selectedSession, useLessonContext]);
 
   const quickPrompts = useMemo(() => {
+    const lessonTitle = selectedSession?.title || 'current lesson';
+    const lessonType = String(selectedSession?.type || 'lesson').toLowerCase();
+    const lessonStatus = String(selectedSession?.status || 'planned').toLowerCase();
+    const primaryObjective = selectedSession?.objectives?.[0] || 'the key standard for this lesson';
+
     if (isOralExamMode) {
       if (useLessonContext && selectedSession) {
         return [
-          'Start oral exam',
-          `5 oral questions: ${selectedSession.title}`,
-          `Hard oral: ${selectedSession.title}`,
+          {
+            label: 'Examiner Warm-Up',
+            prompt: `You are my ${selectedRating} oral examiner. Run a warm-up oral for ${lessonTitle}. Ask 5 one-at-a-time questions, wait for my answer each time, then give a quick score and one coaching tip.`
+          },
+          {
+            label: 'Checkride Curveball',
+            prompt: `Give me one realistic checkride curveball for ${lessonTitle} (objective: ${primaryObjective}). After I answer, grade it like a DPE and show an ideal answer format.`
+          },
+          {
+            label: 'Rapid-Fire Oral',
+            prompt: `Run a rapid-fire oral on ${lessonTitle} for a ${selectedRating} student: 7 short questions, increasing difficulty, then list my top 3 weak spots and exactly what to review next.`
+          },
         ];
       }
 
       return [
-        'Start oral exam',
-        '5 oral questions',
-        'Tricky oral question',
+        {
+          label: 'Examiner Warm-Up',
+          prompt: `You are my ${selectedRating} oral examiner. Run a warm-up oral with 5 one-at-a-time questions, then give concise feedback and my biggest weak area.`
+        },
+        {
+          label: 'Checkride Curveball',
+          prompt: `Give me one tricky but fair ${selectedRating} oral question. After my answer, evaluate like a DPE and provide the model answer.`
+        },
+        {
+          label: 'Rapid-Fire Oral',
+          prompt: `Run a 7-question rapid-fire oral for a ${selectedRating} student and end with a focused next-study checklist.`
+        },
       ];
     }
 
     if (!useLessonContext || !selectedSession) {
       return [
-        'Study plan',
-        'Quiz me',
-        'Top mistakes',
+        {
+          label: 'ATC Lightning Round',
+          prompt: `Create a fun lightning round for a ${selectedRating} student: 8 short scenario questions across regulations, systems, weather, and ADM. Keep it practical and score me after each answer.`
+        },
+        {
+          label: 'Mission Brief Builder',
+          prompt: `Build me a 20-minute study mission for my ${selectedRating} training today: warm-up, main drill, and confidence check. Include exact tasks and timing.`
+        },
+        {
+          label: 'Mistake Radar',
+          prompt: `List the top 5 mistakes ${selectedRating} students make right now, how to spot each one early, and one corrective habit for each.`
+        },
       ];
     }
 
-    const lessonType = String(selectedSession.type || 'lesson').toLowerCase();
-    const lessonStatus = String(selectedSession.status || 'planned').toLowerCase();
-    const lessonTitle = selectedSession.title || 'this lesson';
-    const primaryObjective = selectedSession.objectives?.[0] || 'the key standard for this lesson';
-
-    const typePrompt = lessonType === 'flight'
-      ? `Give me a flight brief for ${lessonTitle} with setup, tolerances, and common errors.`
+    const briefLabel = lessonType === 'flight' ? 'Cockpit Gameplan' : lessonType === 'ground' ? 'Hangar Breakdown' : 'Mission Plan';
+    const briefPrompt = lessonType === 'flight'
+      ? `Build a cockpit gameplan for ${lessonTitle} (${selectedRating}). Output: (1) setup briefing, (2) maneuver tolerances, (3) common errors to avoid, (4) in-flight self-check script.`
       : lessonType === 'ground'
-        ? `Teach me ${lessonTitle} in plain language, then quiz me with 3 oral questions.`
-        : `Give me an efficient study strategy for ${lessonTitle} and what to memorize first.`;
+        ? `Teach ${lessonTitle} for a ${selectedRating} student in plain language. Output: (1) 5 key ideas, (2) 3 memory hooks, (3) 3 oral-style checks.`
+        : `Create a mission plan for ${lessonTitle}. Output: (1) what to know first, (2) what to practice second, (3) how to self-evaluate in 5 minutes.`;
+
+    const statusLabel = lessonStatus === 'completed'
+      ? 'Debrief & Level Up'
+      : lessonStatus === 'in-progress'
+        ? 'Coach Me Through It'
+        : 'Preflight Power-Up';
 
     const statusPrompt = lessonStatus === 'completed'
-      ? `Debrief: ${lessonTitle}`
+      ? `Debrief my performance on ${lessonTitle}. Focus on ${primaryObjective}. Output: what I did well, what likely failed under pressure, and a 10-minute tune-up drill.`
       : lessonStatus === 'in-progress'
-        ? `Focus: ${lessonTitle}`
-        : `Prep: ${lessonTitle}`;
+        ? `Coach me through ${lessonTitle} step-by-step at ${selectedRating} level. Focus on ${primaryObjective}. Give callouts, mistakes to watch for, and confidence cues.`
+        : `Give me a preflight power-up for ${lessonTitle} (${selectedRating}). Focus on ${primaryObjective}. Output: must-know points, do-not-miss errors, and a short confidence checklist.`;
 
     return [
-      `Quiz: ${lessonTitle}`,
-      typePrompt.replace('Give me a flight brief for ', 'Brief: ').replace('Teach me ', 'Teach: ').replace('Give me an efficient study strategy for ', 'Study: ').replace(' with setup, tolerances, and common errors.', '').replace(' in plain language, then quiz me with 3 oral questions.', '').replace(' and what to memorize first.', ''),
-      statusPrompt,
+      {
+        label: `Stump Me: ${lessonTitle}`,
+        prompt: `Stump me on ${lessonTitle} with 6 escalating questions for a ${selectedRating} student. After each answer, give fast feedback and one improvement cue.`
+      },
+      {
+        label: briefLabel,
+        prompt: briefPrompt,
+      },
+      {
+        label: statusLabel,
+        prompt: statusPrompt,
+      },
     ];
-  }, [buildOralExamStarterPrompt, isOralExamMode, selectedSession, useLessonContext]);
+  }, [isOralExamMode, selectedRating, selectedSession, useLessonContext]);
   const chatContextPayload = useMemo(
     () => ({
       student: syllabus.student,
@@ -1923,15 +1966,15 @@ function App() {
                     <p>Ask me anything about your training, need help with a concept, or want study tips. I'm here to help you succeed!</p>
                     <div className="chat-welcome-prompts" aria-label="Example prompts">
                       <span className="chat-welcome-prompts-label">Try:</span>
-                      {quickPrompts.map((prompt) => (
+                      {quickPrompts.map((quickPrompt) => (
                         <button
-                          key={prompt}
+                          key={quickPrompt.label}
                           type="button"
                           className="chat-prompt-chip chat-welcome-prompt-chip"
-                          onClick={() => setChatInput(prompt)}
+                          onClick={() => setChatInput(quickPrompt.prompt)}
                           disabled={isSendingChat}
                         >
-                          {prompt}
+                          {quickPrompt.label}
                         </button>
                       ))}
                     </div>
