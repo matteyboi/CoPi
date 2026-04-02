@@ -2436,8 +2436,11 @@
   font-size: 0.84rem;
 }
 
+
 .status-button.active {
   color: #f8fafc;
+  background: #334155 !important;
+  border-color: #7dd3fc !important;
 }
 
 .status-button.status-planned.active {

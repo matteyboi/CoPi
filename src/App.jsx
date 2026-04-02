@@ -578,11 +578,12 @@ function App() {
           rating: sessionRatings[session.id] ?? null,
         }));
         // Sort: planned, in-progress, then completed (completed always at the bottom)
-        sessionsWithStatus.sort((a, b) => {
-          const aIdx = statusOrder.indexOf(a.status || 'planned');
-          const bIdx = statusOrder.indexOf(b.status || 'planned');
-          return aIdx - bIdx;
-        });
+        // Only move completed sessions to the bottom; keep others in original order
+        const incomplete = sessionsWithStatus.filter(s => s.status !== 'completed');
+        const completed = sessionsWithStatus.filter(s => s.status === 'completed');
+        const sortedSessions = [...incomplete, ...completed];
+        // Preserve original order for incomplete
+        sessionsWithStatus.splice(0, sessionsWithStatus.length, ...sortedSessions);
         return {
           ...phase,
           sessions: sessionsWithStatus,
@@ -874,10 +875,17 @@ function App() {
     if (!instructorMode) {
       return;
     }
-    setSessionDraftStatuses((currentStatuses) => ({
-      ...currentStatuses,
-      [sessionId]: nextStatus,
-    }));
+    setSessionDraftStatuses((currentStatuses) => {
+      if (nextStatus == null) {
+        // Remove the key entirely to allow fallback to no status
+        const { [sessionId]: _, ...rest } = currentStatuses;
+        return rest;
+      }
+      return {
+        ...currentStatuses,
+        [sessionId]: nextStatus,
+      };
+    });
   };
 
   const clearSessionDraftStatus = (sessionId) => {
@@ -918,7 +926,7 @@ function App() {
     }
     // Clone the draft statuses so we can update them before saving
     const updatedStatuses = { ...sessionDraftStatuses };
-    // For each session, if it has a 5-star rating, mark as completed (no lesson day required)
+    // For each session, if it is in-progress and has a 5-star rating, mark as completed
     Object.keys(sessionDraftRatings).forEach((sessionId) => {
       const rating = sessionDraftRatings[sessionId];
       if (rating === 5) {
@@ -928,6 +936,8 @@ function App() {
     setSessionStatuses({ ...updatedStatuses }); // Force new object reference
     setSessionRatings({ ...sessionDraftRatings });
     setPlannedSessionIds([...plannedDraftSessionIds]);
+    setSessionDraftStatuses({});
+    setSessionDraftRatings({});
     setNoteToastMessage('Syllabus changes saved.');
     // Force a re-render by updating a dummy state
     setTimeout(() => setSessionStatuses((s) => ({ ...s })), 0);
@@ -2135,13 +2145,18 @@ function App() {
                                   const plannedIsActive = instructorMode
                                     ? plannedDraftSessionIdSet.has(session.id)
                                     : plannedSessionIdSet.has(session.id);
-                                  const highlightStatus = plannedIsActive
-                                    ? 'planned'
-                                    : session.status || null;
+                                  let highlightStatus;
+                                  if (plannedIsActive) {
+                                    highlightStatus = 'planned';
+                                  } else if (instructorMode && Object.prototype.hasOwnProperty.call(sessionDraftStatuses, session.id)) {
+                                    highlightStatus = sessionDraftStatuses[session.id];
+                                  } else {
+                                    highlightStatus = session.status || null;
+                                  }
                                   return (
                                     <div className="status-actions" aria-label={`Update ${session.title} status`}>
                                       {statusOrder.map((status) => {
-                                        const isDisabled = isInstrumentComingSoon || !instructorMode || highlightStatus === 'completed';
+                                        const isDisabled = isInstrumentComingSoon || !instructorMode;
                                         return (
                                           <button
                                             key={status}
@@ -2149,7 +2164,16 @@ function App() {
                                             className={`status-button status-${status} ${status === highlightStatus ? 'active' : ''}`}
                                             onClick={() => {
                                               if (isDisabled) return;
-                                              if (status === highlightStatus) return;
+                                              if (status === highlightStatus) {
+                                                // Unclick: clear status
+                                                if (status === 'planned') {
+                                                  togglePlannedDraftStatus(session.id);
+                                                  updateSessionStatus(session.id, null);
+                                                } else {
+                                                  updateSessionStatus(session.id, null);
+                                                }
+                                                return;
+                                              }
                                               if (status === 'planned') {
                                                 togglePlannedDraftStatus(session.id);
                                               } else {
