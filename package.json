@@ -17,9 +17,13 @@
     "start": "vite",
     "server": "node server/index.js",
     "dev": "concurrently \"npm run server\" \"npm run start\"",
+    "start:e2e": "vite --host 127.0.0.1 --port 4173 --strictPort",
+    "dev:e2e": "concurrently \"npm run server\" \"npm run start:e2e\"",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed"
   },
   "browserslist": {
     "production": [
@@ -34,6 +38,7 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.2",
     "@vitejs/plugin-react": "^5.0.4",
     "concurrently": "^9.2.1",
     "jsdom": "^27.0.0",
