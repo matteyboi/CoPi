@@ -1452,7 +1452,7 @@ function App() {
         <section className="hero-card">
           <div>
             <img src={copiLogo} alt="CoPi" className="hero-logo" />
-            <p className="eyebrow">Your flight training companion</p>
+            <p className="eyebrow hero-companion-tagline">Your flight training companion</p>
           </div>
 
           <div className="hero-panel">
