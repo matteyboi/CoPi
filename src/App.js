@@ -1,11 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
+import copiLogo from './7F5D28DA-9DA4-47A8-83DA-F88671CB6067-removebg-preview.png';
 import { initializeData, oralSessions as defaultOralSessions, progressHistory as defaultProgressHistory, syllabus as defaultSyllabus } from './data/syllabusData';
 
 const STORAGE_KEY = 'ai-flight-syllabus-progress-v1';
 const NOTES_STORAGE_KEY = 'ai-flight-syllabus-notes-v1';
 const CHECKLIST_STORAGE_KEY = 'ai-flight-syllabus-checklist-v1';
 const RATING_STORAGE_KEY = 'ai-flight-syllabus-rating-v1';
+const CHAT_THREADS_STORAGE_KEY = 'ai-flight-syllabus-chat-threads-v1';
+const ACTIVE_CHAT_THREAD_STORAGE_KEY = 'ai-flight-syllabus-chat-active-thread-v1';
+const LEGACY_CHAT_STORAGE_KEY = 'ai-flight-syllabus-chat-v1';
+const CHAT_CONTEXT_STORAGE_KEY = 'ai-flight-syllabus-chat-context-v1';
+const STUDENT_NAME_STORAGE_KEY = 'ai-flight-syllabus-student-name-v1';
+const STUDENT_PROFILES_STORAGE_KEY = 'ai-flight-syllabus-student-profiles-v1';
+const CLEAR_UNDO_TIMEOUT_MS = 5000;
 
 const statusLabel = {
   completed: 'Completed',
@@ -15,9 +23,46 @@ const statusLabel = {
 
 const statusOrder = ['planned', 'in-progress', 'completed'];
 
+const createDefaultChatThread = () => ({
+  id: 'chat-default',
+  title: 'Conversation',
+  pinned: false,
+  updatedAt: new Date().toISOString(),
+  messages: [],
+});
+
+const normalizeStudentKey = (name) => String(name || '').trim().toLowerCase() || 'default-student';
+
+const readStudentProfiles = () => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(STUDENT_PROFILES_STORAGE_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+};
+
+const writeStudentProfiles = (profiles) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(STUDENT_PROFILES_STORAGE_KEY, JSON.stringify(profiles));
+};
+
 function App() {
   const [dataLoading, setDataLoading] = useState(true);
   const [syllabus, setSyllabus] = useState(defaultSyllabus);
+  const [activeStudentName, setActiveStudentName] = useState(() => {
+    if (typeof window === 'undefined') {
+      return defaultSyllabus.student;
+    }
+
+    return window.localStorage.getItem(STUDENT_NAME_STORAGE_KEY) || defaultSyllabus.student;
+  });
   const [progressHistory, setProgressHistory] = useState(defaultProgressHistory);
   const [oralSessions, setOralSessions] = useState(defaultOralSessions);
   
@@ -58,20 +103,73 @@ function App() {
     }
   });
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [chatMessages, setChatMessages] = useState(() => {
+  const [chatThreads, setChatThreads] = useState(() => {
     if (typeof window === 'undefined') {
-      return [];
+      return [
+        {
+          id: 'chat-default',
+          title: 'Conversation',
+          pinned: false,
+          updatedAt: new Date().toISOString(),
+          messages: [],
+        },
+      ];
     }
 
     try {
-      return JSON.parse(window.localStorage.getItem('ai-flight-syllabus-chat-v1') ?? '[]');
+      const storedThreads = JSON.parse(window.localStorage.getItem(CHAT_THREADS_STORAGE_KEY) ?? '[]');
+      if (Array.isArray(storedThreads) && storedThreads.length) {
+        return storedThreads;
+      }
+
+      const legacyMessages = JSON.parse(window.localStorage.getItem(LEGACY_CHAT_STORAGE_KEY) ?? '[]');
+      if (Array.isArray(legacyMessages) && legacyMessages.length) {
+        return [
+          {
+            id: 'chat-default',
+            title: 'Conversation',
+            pinned: false,
+            updatedAt: new Date().toISOString(),
+            messages: legacyMessages,
+          },
+        ];
+      }
     } catch {
-      return [];
+      return [
+        {
+          id: 'chat-default',
+          title: 'Conversation',
+          pinned: false,
+          updatedAt: new Date().toISOString(),
+          messages: [],
+        },
+      ];
     }
+
+    return [
+      {
+        id: 'chat-default',
+        title: 'Conversation',
+        pinned: false,
+        updatedAt: new Date().toISOString(),
+        messages: [],
+      },
+    ];
   });
+  const [activeChatThreadId, setActiveChatThreadId] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'chat-default';
+    }
+
+    return window.localStorage.getItem(ACTIVE_CHAT_THREAD_STORAGE_KEY) ?? 'chat-default';
+  });
+  const [chatHistoryFilter, setChatHistoryFilter] = useState('all');
   const [chatInput, setChatInput] = useState('');
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
+  const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [ratingMenuOpen, setRatingMenuOpen] = useState(false);
   const [selectedRating, setSelectedRating] = useState(() => {
     if (typeof window === 'undefined') {
@@ -80,15 +178,76 @@ function App() {
 
     return window.localStorage.getItem(RATING_STORAGE_KEY) ?? 'Private Pilot';
   });
+  const [useLessonContext, setUseLessonContext] = useState(() => {
+    if (typeof window === 'undefined') {
+      return true;
+    }
+
+    const stored = window.localStorage.getItem(CHAT_CONTEXT_STORAGE_KEY);
+    return stored === null ? true : stored === 'true';
+  });
+  const [isContextPreviewOpen, setIsContextPreviewOpen] = useState(false);
+  const [isOralExamMode, setIsOralExamMode] = useState(false);
+  const [savedReplyId, setSavedReplyId] = useState(null);
+  const [copiedReplyId, setCopiedReplyId] = useState(null);
+  const [noteToastMessage, setNoteToastMessage] = useState('');
+  const [chatBackendStatus, setChatBackendStatus] = useState({
+    level: 'checking',
+    message: 'Checking CoPi backend...',
+  });
+  const [clearUndoState, setClearUndoState] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
+  const [promptModal, setPromptModal] = useState(null);
+  const [promptValue, setPromptValue] = useState('');
+  const chatMessagesRef = useRef(null);
+  const wasNearBottomRef = useRef(true);
+  const previousThreadIdRef = useRef(null);
+  const clearUndoTimeoutRef = useRef(null);
+  const hasInitializedStudentProfileRef = useRef(false);
+  const importProfilesInputRef = useRef(null);
+
+  const openConfirmModal = ({ title, body, confirmLabel = 'Confirm', danger = false, onConfirm }) => {
+    setConfirmModal({ title, body, confirmLabel, danger, onConfirm });
+  };
+
+  const openPromptModal = ({ title, placeholder = '', defaultValue = '', onConfirm }) => {
+    setPromptValue(defaultValue);
+    setPromptModal({ title, placeholder, onConfirm });
+  };
+
+  const hydrateStudentProfile = useCallback((profile) => {
+    if (profile) {
+      setSessionStatuses(profile.sessionStatuses ?? {});
+      setSessionNotes(profile.sessionNotes ?? {});
+      setSessionChecklist(profile.sessionChecklist ?? {});
+      setSelectedRating(profile.selectedRating ?? 'Private Pilot');
+      setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createDefaultChatThread()]);
+      setActiveChatThreadId(profile.activeChatThreadId ?? 'chat-default');
+      setUseLessonContext(profile.useLessonContext ?? true);
+      return;
+    }
+
+    setSessionStatuses({});
+    setSessionNotes({});
+    setSessionChecklist({});
+    setSelectedRating('Private Pilot');
+    const starterThread = createDefaultChatThread();
+    setChatThreads([starterThread]);
+    setActiveChatThreadId(starterThread.id);
+    setUseLessonContext(true);
+  }, []);
 
   useEffect(() => {
     initializeData().then((data) => {
-      setSyllabus(data.syllabus);
+      setSyllabus({
+        ...data.syllabus,
+        student: activeStudentName,
+      });
       setProgressHistory(data.progressHistory);
       setOralSessions(data.oralSessions);
       setDataLoading(false);
     });
-  }, []);
+  }, [activeStudentName]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sessionStatuses));
@@ -103,17 +262,133 @@ function App() {
   }, [sessionChecklist]);
 
   useEffect(() => {
-    window.localStorage.setItem('ai-flight-syllabus-chat-v1', JSON.stringify(chatMessages));
-  }, [chatMessages]);
+    window.localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(chatThreads));
+  }, [chatThreads]);
+
+  useEffect(() => {
+    window.localStorage.setItem(ACTIVE_CHAT_THREAD_STORAGE_KEY, activeChatThreadId);
+  }, [activeChatThreadId]);
 
   useEffect(() => {
     window.localStorage.setItem(RATING_STORAGE_KEY, selectedRating);
   }, [selectedRating]);
 
   useEffect(() => {
+    window.localStorage.setItem(CHAT_CONTEXT_STORAGE_KEY, String(useLessonContext));
+  }, [useLessonContext]);
+
+  useEffect(() => {
+    if (dataLoading) {
+      return;
+    }
+
+    const studentKey = normalizeStudentKey(activeStudentName);
+    const profiles = readStudentProfiles();
+    const profile = profiles[studentKey];
+
+    if (!hasInitializedStudentProfileRef.current) {
+      hasInitializedStudentProfileRef.current = true;
+      if (!profile) {
+        return;
+      }
+    }
+
+    if (profile) {
+      setSessionStatuses(profile.sessionStatuses ?? {});
+      setSessionNotes(profile.sessionNotes ?? {});
+      setSessionChecklist(profile.sessionChecklist ?? {});
+      setSelectedRating(profile.selectedRating ?? 'Private Pilot');
+      setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createDefaultChatThread()]);
+      setActiveChatThreadId(profile.activeChatThreadId ?? 'chat-default');
+      setUseLessonContext(profile.useLessonContext ?? true);
+      return;
+    }
+
+    setSessionStatuses({});
+    setSessionNotes({});
+    setSessionChecklist({});
+    setSelectedRating('Private Pilot');
+    const starterThread = createDefaultChatThread();
+    setChatThreads([starterThread]);
+    setActiveChatThreadId(starterThread.id);
+    setUseLessonContext(true);
+  }, [activeStudentName, dataLoading]);
+
+  useEffect(() => {
+    if (dataLoading || !activeStudentName) {
+      return;
+    }
+
+    const profiles = readStudentProfiles();
+    profiles[normalizeStudentKey(activeStudentName)] = {
+      studentName: activeStudentName,
+      sessionStatuses,
+      sessionNotes,
+      sessionChecklist,
+      selectedRating,
+      chatThreads,
+      activeChatThreadId,
+      useLessonContext,
+    };
+    writeStudentProfiles(profiles);
+  }, [
+    activeChatThreadId,
+    activeStudentName,
+    chatThreads,
+    dataLoading,
+    selectedRating,
+    sessionChecklist,
+    sessionNotes,
+    sessionStatuses,
+    useLessonContext,
+  ]);
+
+  useEffect(() => {
+    if (!activeStudentName) {
+      return;
+    }
+
+    window.localStorage.setItem(STUDENT_NAME_STORAGE_KEY, activeStudentName);
+  }, [activeStudentName]);
+
+  useEffect(() => {
+    if (!savedReplyId && !copiedReplyId && !noteToastMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSavedReplyId(null);
+      setCopiedReplyId(null);
+      setNoteToastMessage('');
+    }, 1800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [savedReplyId, copiedReplyId, noteToastMessage]);
+
+  useEffect(
+    () => () => {
+      if (clearUndoTimeoutRef.current) {
+        window.clearTimeout(clearUndoTimeoutRef.current);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
     const handleClickOutside = (e) => {
-      if (menuOpen && !e.target.closest('.hero-menu-button') && !e.target.closest('.hero-menu-dropdown')) {
-        setMenuOpen(false);
+      const clickedInsideMenuCluster = Boolean(
+        e.target.closest('.hero-menu-button')
+          || e.target.closest('.hero-menu-dropdown')
+          || e.target.closest('.hero-user-dropdown')
+          || e.target.closest('.hero-settings-dropdown')
+          || e.target.closest('.hero-help-panel')
+      );
+
+      if (!clickedInsideMenuCluster) {
+        if (menuOpen) setMenuOpen(false);
+        if (showUserDropdown) setShowUserDropdown(false);
+        if (showSettingsDropdown) setShowSettingsDropdown(false);
+        if (showHelpPanel) setShowHelpPanel(false);
       }
 
       if (ratingMenuOpen && !e.target.closest('.hero-rating-toggle') && !e.target.closest('.hero-rating-dropdown')) {
@@ -122,7 +397,59 @@ function App() {
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [menuOpen, ratingMenuOpen]);
+  }, [menuOpen, ratingMenuOpen, showHelpPanel, showSettingsDropdown, showUserDropdown]);
+
+  useEffect(() => {
+    if (!chatThreads.length) {
+      return;
+    }
+
+    const activeExists = chatThreads.some((thread) => thread.id === activeChatThreadId);
+    if (!activeExists) {
+      setActiveChatThreadId(chatThreads[0].id);
+    }
+  }, [activeChatThreadId, chatThreads]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const checkBackendHealth = async () => {
+      try {
+        const response = await fetch('/api/health');
+        if (!response.ok) {
+          throw new Error('Health check failed');
+        }
+
+        const data = await response.json();
+        if (!ignore) {
+          if (data?.aiConfigured) {
+            setChatBackendStatus({
+              level: 'online',
+              message: `CoPi AI connected${data?.model ? ` (${data.model})` : ''}.`,
+            });
+          } else {
+            setChatBackendStatus({
+              level: 'missing-key',
+              message: 'CoPi backend is online, but OPENAI_API_KEY is missing.',
+            });
+          }
+        }
+      } catch {
+        if (!ignore) {
+          setChatBackendStatus({
+            level: 'offline',
+            message: 'CoPi backend is offline. Start with npm run dev.',
+          });
+        }
+      }
+    };
+
+    checkBackendHealth();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const phasesWithProgress = useMemo(
     () =>
@@ -184,6 +511,119 @@ function App() {
 
   const selectedChecklistState = selectedSession ? sessionChecklist[selectedSession.id] ?? {} : {};
   const selectedChecklistCompleted = selectedSession?.checklist?.filter((item) => selectedChecklistState[item]).length ?? 0;
+  const sortedChatThreads = useMemo(
+    () =>
+      [...chatThreads].sort((a, b) => {
+        if (a.pinned !== b.pinned) {
+          return a.pinned ? -1 : 1;
+        }
+
+        return new Date(b.updatedAt) - new Date(a.updatedAt);
+      }),
+    [chatThreads]
+  );
+  const recentChatThreads = useMemo(
+    () => [...chatThreads].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+    [chatThreads]
+  );
+  const visibleChatThreads = useMemo(() => {
+    if (chatHistoryFilter === 'pinned') {
+      return sortedChatThreads.filter((thread) => thread.pinned);
+    }
+
+    if (chatHistoryFilter === 'recent') {
+      return recentChatThreads;
+    }
+
+    return sortedChatThreads;
+  }, [chatHistoryFilter, recentChatThreads, sortedChatThreads]);
+  const activeChatThread = useMemo(
+    () => chatThreads.find((thread) => thread.id === activeChatThreadId) ?? chatThreads[0] ?? null,
+    [activeChatThreadId, chatThreads]
+  );
+  const chatMessages = activeChatThread?.messages ?? [];
+  const buildOralExamStarterPrompt = useCallback(() => {
+    if (useLessonContext && selectedSession) {
+      return `Start an oral exam for ${selectedSession.title}. Ask me one question at a time, wait for my answer, then give brief feedback and ask the next question.`;
+    }
+
+    return 'Start a private pilot oral exam. Ask me one question at a time, wait for my answer, then give brief feedback and ask the next question.';
+  }, [selectedSession, useLessonContext]);
+
+  const quickPrompts = useMemo(() => {
+    if (isOralExamMode) {
+      if (useLessonContext && selectedSession) {
+        return [
+          buildOralExamStarterPrompt(),
+          `Ask me 5 oral questions about ${selectedSession.title} and grade each answer briefly.`,
+          `Give me the hardest oral question for ${selectedSession.title} and then coach me to a stronger answer.`,
+        ];
+      }
+
+      return [
+        buildOralExamStarterPrompt(),
+        'Ask me 5 mixed private pilot oral questions and score my answers clearly.',
+        'Give me one tricky oral question at a time until I say stop.',
+      ];
+    }
+
+    if (!useLessonContext || !selectedSession) {
+      return [
+        'Give me a 10-minute private pilot study plan for today.',
+        'Ask me 5 mixed oral-style questions and grade my answers.',
+        'What are the top 3 mistakes student pilots make and how do I avoid them?',
+      ];
+    }
+
+    const lessonType = String(selectedSession.type || 'lesson').toLowerCase();
+    const lessonStatus = String(selectedSession.status || 'planned').toLowerCase();
+    const lessonTitle = selectedSession.title || 'this lesson';
+    const primaryObjective = selectedSession.objectives?.[0] || 'the key standard for this lesson';
+
+    const typePrompt = lessonType === 'flight'
+      ? `Give me a flight brief for ${lessonTitle} with setup, tolerances, and common errors.`
+      : lessonType === 'ground'
+        ? `Teach me ${lessonTitle} in plain language, then quiz me with 3 oral questions.`
+        : `Give me an efficient study strategy for ${lessonTitle} and what to memorize first.`;
+
+    const statusPrompt = lessonStatus === 'completed'
+      ? `Debrief ${lessonTitle}: what should I keep, fix, and practice next session?`
+      : lessonStatus === 'in-progress'
+        ? `I’m currently working on ${lessonTitle}. What should I focus on in the next 30 minutes?`
+        : `Before I start ${lessonTitle}, what should I prep so I show up ready?`;
+
+    return [
+      `Quiz me on ${lessonTitle} with short-answer questions tied to: ${primaryObjective}`,
+      typePrompt,
+      statusPrompt,
+    ];
+  }, [buildOralExamStarterPrompt, isOralExamMode, selectedSession, useLessonContext]);
+  const chatContextPayload = useMemo(
+    () => ({
+      student: syllabus.student,
+      rating: selectedRating,
+      copiMode: isOralExamMode ? 'oral-exam' : 'coach',
+      useLessonContext,
+      lessonTitle: useLessonContext ? selectedSession?.title : null,
+      lessonFocus: useLessonContext ? selectedSession?.focus : null,
+      lessonType: useLessonContext ? selectedSession?.type : null,
+      lessonStatus: useLessonContext ? selectedSession?.status : null,
+      objectives: useLessonContext ? selectedSession?.objectives ?? [] : [],
+      checklistProgress: useLessonContext
+        ? `${selectedChecklistCompleted}/${selectedSession?.checklist?.length ?? 0}`
+        : null,
+      notes: useLessonContext && selectedSession ? sessionNotes[selectedSession.id] ?? '' : '',
+    }),
+    [
+      selectedChecklistCompleted,
+      selectedRating,
+      selectedSession,
+      sessionNotes,
+      syllabus.student,
+      isOralExamMode,
+      useLessonContext,
+    ]
+  );
 
   const stats = [
     {
@@ -214,6 +654,34 @@ function App() {
       helper: 'Queued sessions ready to schedule',
     },
   ];
+
+  const handleChatMessagesScroll = () => {
+    const node = chatMessagesRef.current;
+    if (!node) {
+      return;
+    }
+
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    wasNearBottomRef.current = distanceFromBottom < 80;
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'copi') {
+      return;
+    }
+
+    const node = chatMessagesRef.current;
+    if (!node) {
+      return;
+    }
+
+    const threadChanged = previousThreadIdRef.current !== activeChatThreadId;
+    previousThreadIdRef.current = activeChatThreadId;
+
+    if (threadChanged || wasNearBottomRef.current) {
+      node.scrollTop = node.scrollHeight;
+    }
+  }, [activeTab, activeChatThreadId, chatMessages.length]);
 
   const updateSessionStatus = (sessionId, nextStatus) => {
     setSessionStatuses((currentStatuses) => ({
@@ -249,64 +717,628 @@ function App() {
     }));
   };
 
-  const handleSendMessage = async () => {
-    if (!chatInput.trim() || isSendingChat) return;
+  const createChatThread = () => {
+    const newThread = {
+      id: `chat-${Date.now()}`,
+      title: `Chat ${chatThreads.length + 1}`,
+      pinned: false,
+      updatedAt: new Date().toISOString(),
+      messages: [],
+    };
+
+    setChatThreads((currentThreads) => [newThread, ...currentThreads]);
+    setActiveChatThreadId(newThread.id);
+  };
+
+  const scheduleClearUndo = (snapshot, message) => {
+    if (clearUndoTimeoutRef.current) {
+      window.clearTimeout(clearUndoTimeoutRef.current);
+    }
+
+    setClearUndoState({
+      snapshot,
+      message: `${message} (Undo ${Math.round(CLEAR_UNDO_TIMEOUT_MS / 1000)}s)`,
+    });
+
+    clearUndoTimeoutRef.current = window.setTimeout(() => {
+      setClearUndoState(null);
+      clearUndoTimeoutRef.current = null;
+    }, CLEAR_UNDO_TIMEOUT_MS);
+  };
+
+  const undoClearAction = () => {
+    if (!clearUndoState) {
+      return;
+    }
+
+    setChatThreads(clearUndoState.snapshot.chatThreads);
+    setActiveChatThreadId(clearUndoState.snapshot.activeChatThreadId);
+    setClearUndoState(null);
+
+    if (clearUndoTimeoutRef.current) {
+      window.clearTimeout(clearUndoTimeoutRef.current);
+      clearUndoTimeoutRef.current = null;
+    }
+  };
+
+  const clearActiveChat = () => {
+    if (!activeChatThread) {
+      return;
+    }
+
+    openConfirmModal({
+      title: 'Clear Chat Thread',
+      body: `Clear all messages in "${activeChatThread.title}"? This cannot be undone.`,
+      confirmLabel: 'Clear',
+      danger: true,
+      onConfirm: () => {
+        const snapshot = {
+          chatThreads,
+          activeChatThreadId,
+        };
+
+        setChatThreads((currentThreads) =>
+          currentThreads.map((thread) =>
+            thread.id === activeChatThread.id
+              ? {
+                  ...thread,
+                  messages: [],
+                  updatedAt: new Date().toISOString(),
+                }
+              : thread
+          )
+        );
+
+        scheduleClearUndo(snapshot, `Cleared ${activeChatThread.title}`);
+      },
+    });
+  };
+
+  const clearAllChatHistory = () => {
+    openConfirmModal({
+      title: 'Clear All History',
+      body: 'Clear all chat history across all threads? This cannot be undone.',
+      confirmLabel: 'Clear All',
+      danger: true,
+      onConfirm: () => {
+        const snapshot = {
+          chatThreads,
+          activeChatThreadId,
+        };
+
+        const resetThread = {
+          id: 'chat-default',
+          title: 'Conversation',
+          pinned: false,
+          updatedAt: new Date().toISOString(),
+          messages: [],
+        };
+
+        setChatThreads([resetThread]);
+        setActiveChatThreadId(resetThread.id);
+        scheduleClearUndo(snapshot, 'Cleared all chat history');
+      },
+    });
+  };
+
+  const handleClearChatInputOrThread = () => {
+    if (chatInput.trim()) {
+      setChatInput('');
+      return;
+    }
+
+    clearActiveChat();
+  };
+
+  const exportSelectedSessionNotes = () => {
+    if (!selectedSession) {
+      return;
+    }
+
+    const noteText = sessionNotes[selectedSession.id] ?? '';
+    const fileSafeTitle = selectedSession.title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+    const exportBody = [
+      `Lesson: ${selectedSession.title}`,
+      `Stage: ${selectedSession.stageTitle}`,
+      `Type: ${selectedSession.type}`,
+      `Status: ${statusLabel[selectedSession.status]}`,
+      `Checklist: ${selectedChecklistCompleted}/${selectedSession.checklist?.length ?? 0}`,
+      `Exported: ${new Date().toLocaleString()}`,
+      '',
+      'Notes',
+      '-----',
+      noteText || 'No notes yet.',
+    ].join('\n');
+
+    const blob = new Blob([exportBody], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${fileSafeTitle || 'lesson-notes'}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    setNoteToastMessage(`Exported notes for ${selectedSession.title}`);
+  };
+
+  const startOralExamMode = () => {
+    setIsOralExamMode(true);
+    handleSendMessage(buildOralExamStarterPrompt(), {
+      ...chatContextPayload,
+      copiMode: 'oral-exam',
+    });
+  };
+
+  const toggleThreadPinned = () => {
+    if (!activeChatThread) {
+      return;
+    }
+
+    setChatThreads((currentThreads) =>
+      currentThreads.map((thread) =>
+        thread.id === activeChatThread.id
+          ? {
+              ...thread,
+              pinned: !thread.pinned,
+            }
+          : thread
+      )
+    );
+  };
+
+  const renameActiveThread = () => {
+    if (!activeChatThread) {
+      return;
+    }
+
+    openPromptModal({
+      title: 'Rename Thread',
+      placeholder: 'Thread name...',
+      defaultValue: activeChatThread.title,
+      onConfirm: (nextTitle) => {
+        const sanitizedTitle = nextTitle.trim().slice(0, 48);
+        if (!sanitizedTitle) {
+          return;
+        }
+
+        setChatThreads((currentThreads) =>
+          currentThreads.map((thread) =>
+            thread.id === activeChatThread.id
+              ? {
+                  ...thread,
+                  title: sanitizedTitle,
+                  updatedAt: new Date().toISOString(),
+                }
+              : thread
+          )
+        );
+        setNoteToastMessage(`Renamed to ${sanitizedTitle}`);
+      },
+    });
+  };
+
+  const saveReplyToLessonNotes = (messageId, content) => {
+    if (!selectedSession || isInstrumentComingSoon) {
+      return;
+    }
+
+    const existingNote = sessionNotes[selectedSession.id] ?? '';
+    const stampedLine = `[CoPi ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}] ${content}`;
+    const nextNote = existingNote ? `${existingNote}\n\n${stampedLine}` : stampedLine;
+
+    updateSessionNote(selectedSession.id, nextNote);
+    setSavedReplyId(messageId);
+    setNoteToastMessage(`Saved to notes for ${selectedSession.title}`);
+  };
+
+  const copyReplyToClipboard = async (messageId, content) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(content);
+      } else {
+        const fallbackInput = document.createElement('textarea');
+        fallbackInput.value = content;
+        fallbackInput.setAttribute('readonly', '');
+        fallbackInput.style.position = 'absolute';
+        fallbackInput.style.left = '-9999px';
+        document.body.appendChild(fallbackInput);
+        fallbackInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(fallbackInput);
+      }
+
+      setCopiedReplyId(messageId);
+      setNoteToastMessage('Copied response');
+    } catch (_error) {
+      setNoteToastMessage('Unable to copy right now');
+    }
+  };
+
+  const handleSendMessage = async (overrideInput = null, overrideContext = null) => {
+    const nextInput = String(overrideInput ?? chatInput).trim();
+    if (!nextInput || isSendingChat || !activeChatThread) return;
+
+    // Capture thread ID now to avoid stale closure during async streaming
+    const threadId = activeChatThread.id;
 
     const newMessage = {
       id: Date.now(),
       role: 'user',
-      content: chatInput,
+      content: nextInput,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
     const updatedMessages = [...chatMessages, newMessage];
-    setChatMessages(updatedMessages);
+    setChatThreads((currentThreads) =>
+      currentThreads.map((thread) =>
+        thread.id === threadId
+          ? { ...thread, messages: updatedMessages, updatedAt: new Date().toISOString() }
+          : thread
+      )
+    );
     setChatInput('');
     setIsSendingChat(true);
 
+    // Insert a streaming placeholder message immediately so the user sees activity
+    const streamMsgId = Date.now() + 1;
+    setChatThreads((currentThreads) =>
+      currentThreads.map((thread) =>
+        thread.id === threadId
+          ? {
+              ...thread,
+              messages: [
+                ...updatedMessages,
+                {
+                  id: streamMsgId,
+                  role: 'assistant',
+                  content: '',
+                  isStreaming: true,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                },
+              ],
+            }
+          : thread
+      )
+    );
+
     try {
-      const response = await fetch('/api/chat', {
+      let receivedDelta = false;
+      const response = await fetch('/api/chat/stream', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: updatedMessages,
-          context: {
-            student: syllabus.student,
-            rating: selectedRating,
-            lessonTitle: selectedSession?.title,
-          },
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: updatedMessages, context: overrideContext ?? chatContextPayload }),
       });
 
-      if (!response.ok) {
+      if (!response.ok || !response.body) {
         throw new Error('Chat service is unavailable right now.');
       }
 
-      const data = await response.json();
-      const assistantText = data.reply || 'I could not generate a response right now.';
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let streamError = null;
 
-      const responseMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: assistantText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
 
-      setChatMessages((prev) => [...prev, responseMessage]);
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') break outer;
+          try {
+            const parsed = JSON.parse(payload);
+            if (parsed.error) { streamError = parsed.error; break outer; }
+            if (parsed.delta) {
+              if (!receivedDelta) {
+                receivedDelta = true;
+                setChatBackendStatus({
+                  level: 'online',
+                  message: 'CoPi online · Live responses active',
+                });
+              }
+              setChatThreads((currentThreads) =>
+                currentThreads.map((thread) =>
+                  thread.id === threadId
+                    ? {
+                        ...thread,
+                        messages: thread.messages.map((m) =>
+                          m.id === streamMsgId ? { ...m, content: m.content + parsed.delta } : m
+                        ),
+                      }
+                    : thread
+                )
+              );
+            }
+          } catch {}
+        }
+      }
+
+      if (streamError) {
+        const missingKey = String(streamError).toLowerCase().includes('api key');
+        setChatBackendStatus(
+          missingKey
+            ? {
+                level: 'missing-key',
+                message: 'CoPi backend online, but OPENAI_API_KEY is missing or invalid.',
+              }
+            : {
+                level: 'offline',
+                message: 'CoPi backend error. Check API logs and try again.',
+              }
+        );
+        setChatThreads((currentThreads) =>
+          currentThreads.map((thread) =>
+            thread.id === threadId
+              ? {
+                  ...thread,
+                  messages: thread.messages.map((m) =>
+                    m.id === streamMsgId
+                      ? { ...m, content: `CoPi encountered an error: ${streamError}` }
+                      : m
+                  ),
+                }
+              : thread
+          )
+        );
+      }
     } catch (_error) {
-      const fallbackMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: 'CoPi could not reach the chat backend. Start the API server with `npm run server` (or `npm run dev`).',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-
-      setChatMessages((prev) => [...prev, fallbackMessage]);
+      setChatThreads((currentThreads) =>
+        currentThreads.map((thread) =>
+          thread.id === threadId
+            ? {
+                ...thread,
+                messages: thread.messages.map((m) =>
+                  m.id === streamMsgId
+                    ? {
+                        ...m,
+                        content:
+                          'CoPi could not reach the chat backend. Start the API server with `npm run server` (or `npm run dev`).',
+                      }
+                    : m
+                ),
+              }
+            : thread
+        )
+      );
+      setChatBackendStatus({
+        level: 'offline',
+        message: 'CoPi backend is offline. Start with npm run dev.',
+      });
     } finally {
+      // Mark streaming complete and persist updatedAt
+      setChatThreads((currentThreads) =>
+        currentThreads.map((thread) =>
+          thread.id === threadId
+            ? {
+                ...thread,
+                messages: thread.messages.map((m) =>
+                  m.id === streamMsgId ? { ...m, isStreaming: false } : m
+                ),
+                updatedAt: new Date().toISOString(),
+              }
+            : thread
+        )
+      );
       setIsSendingChat(false);
     }
+  };
+
+  const handleChatInputKeyDown = (event) => {
+    if (event.key === 'Escape' && isContextPreviewOpen) {
+      setIsContextPreviewOpen(false);
+      return;
+    }
+
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      handleSendMessage();
+      return;
+    }
+
+    if (event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const getExistingStudents = () => {
+    const profiles = readStudentProfiles();
+    const studentNames = new Set();
+
+    if (activeStudentName) {
+      studentNames.add(activeStudentName);
+    }
+
+    Object.entries(profiles).forEach(([studentKey, profile]) => {
+      const profileName = profile?.studentName;
+      const resolvedName = String(profileName || studentKey || '').trim();
+      if (resolvedName) {
+        studentNames.add(resolvedName);
+      }
+    });
+
+    return Array.from(studentNames).sort((a, b) => a.localeCompare(b));
+  };
+
+  const handleUserSelection = (studentName) => {
+    if (studentName === 'ADD_NEW') {
+      setShowUserDropdown(false);
+      setMenuOpen(false);
+      openPromptModal({
+        title: 'Add Student',
+        placeholder: 'Enter student name...',
+        defaultValue: '',
+        onConfirm: (newStudentName) => {
+          const sanitizedName = newStudentName.trim().slice(0, 48);
+          if (!sanitizedName) {
+            return;
+          }
+
+          setActiveStudentName(sanitizedName);
+          setSyllabus((current) => ({
+            ...current,
+            student: sanitizedName,
+          }));
+          setNoteToastMessage(`Created new student profile: ${sanitizedName}`);
+        },
+      });
+    } else {
+      setActiveStudentName(studentName);
+      setSyllabus((current) => ({
+        ...current,
+        student: studentName,
+      }));
+      setNoteToastMessage(`Switched user to ${studentName}`);
+      setShowUserDropdown(false);
+      setMenuOpen(false);
+    }
+  };
+
+  const toggleSettingsDropdown = () => {
+    setMenuOpen(false);
+    setShowUserDropdown(false);
+    setShowHelpPanel(false);
+    setShowSettingsDropdown((isOpen) => !isOpen);
+  };
+
+  const toggleHelpPanel = () => {
+    setMenuOpen(false);
+    setShowUserDropdown(false);
+    setShowSettingsDropdown(false);
+    setShowHelpPanel((isOpen) => !isOpen);
+  };
+
+  const resetCurrentStudentData = () => {
+    openConfirmModal({
+      title: 'Reset Student Data',
+      body: `Reset progress, notes, checklist, and chat for ${activeStudentName}? This cannot be undone.`,
+      confirmLabel: 'Reset',
+      danger: true,
+      onConfirm: () => {
+        hydrateStudentProfile(null);
+        setIsOralExamMode(false);
+        setShowSettingsDropdown(false);
+        setMenuOpen(false);
+        setNoteToastMessage(`Reset training data for ${activeStudentName}`);
+      },
+    });
+  };
+
+  const exportAllStudentProfiles = () => {
+    const profiles = readStudentProfiles();
+    profiles[normalizeStudentKey(activeStudentName)] = {
+      studentName: activeStudentName,
+      sessionStatuses,
+      sessionNotes,
+      sessionChecklist,
+      selectedRating,
+      chatThreads,
+      activeChatThreadId,
+      useLessonContext,
+    };
+
+    const fileTimestamp = new Date().toISOString().split('T')[0];
+    const fileName = `copi-student-profiles-${fileTimestamp}.json`;
+    const payload = JSON.stringify(profiles, null, 2);
+    const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setShowSettingsDropdown(false);
+    setMenuOpen(false);
+    setNoteToastMessage('Exported student profiles');
+  };
+
+  const openImportProfilesPicker = () => {
+    importProfilesInputRef.current?.click();
+  };
+
+  const importStudentProfiles = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const rawText = await file.text();
+      const parsed = JSON.parse(rawText);
+
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Invalid profile file format');
+      }
+
+      const importedProfiles = Object.entries(parsed).reduce((accumulator, [studentKey, profile]) => {
+        if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+          return accumulator;
+        }
+
+        const profileStudentName = String(profile.studentName || studentKey || '').trim();
+        if (!profileStudentName) {
+          return accumulator;
+        }
+
+        accumulator[normalizeStudentKey(profileStudentName)] = {
+          ...profile,
+          studentName: profileStudentName,
+        };
+        return accumulator;
+      }, {});
+
+      const existingProfiles = readStudentProfiles();
+      const mergedProfiles = {
+        ...existingProfiles,
+        ...importedProfiles,
+      };
+
+      writeStudentProfiles(mergedProfiles);
+
+      const currentProfile = mergedProfiles[normalizeStudentKey(activeStudentName)];
+      if (currentProfile) {
+        hydrateStudentProfile(currentProfile);
+      }
+
+      const importedCount = Object.keys(importedProfiles).length;
+      setNoteToastMessage(`Imported ${importedCount} student profile${importedCount === 1 ? '' : 's'}`);
+      setShowSettingsDropdown(false);
+      setMenuOpen(false);
+    } catch {
+      setNoteToastMessage('Could not import profiles. Please use a valid JSON export file.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const switchUser = () => {
+    setMenuOpen(false);
+    setShowSettingsDropdown(false);
+    setShowHelpPanel(false);
+    setShowUserDropdown((isOpen) => !isOpen);
+  };
+
+  const handleMenuToggle = () => {
+    setMenuOpen((isOpen) => {
+      const nextState = !isOpen;
+      if (!nextState) {
+        setShowUserDropdown(false);
+        setShowSettingsDropdown(false);
+        setShowHelpPanel(false);
+      }
+      return nextState;
+    });
   };
 
   if (dataLoading) {
@@ -326,14 +1358,14 @@ function App() {
       <main className="dashboard-shell">
         <section className="hero-card">
           <div>
+            <img src={copiLogo} alt="CoPi" className="hero-logo" />
             <p className="eyebrow">Your flight training companion</p>
-            <h1>CoPi</h1>
           </div>
 
           <div className="hero-panel">
             <button
               className="hero-menu-button"
-              onClick={() => setMenuOpen(!menuOpen)}
+              onClick={handleMenuToggle}
               type="button"
               aria-label="Open menu"
             >
@@ -341,14 +1373,81 @@ function App() {
               <span></span>
               <span></span>
             </button>
+
+            <input
+              ref={importProfilesInputRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: 'none' }}
+              onChange={importStudentProfiles}
+            />
             
-            {menuOpen && (
+            {showUserDropdown && (
+              <div className="hero-user-dropdown">
+                <button
+                  type="button"
+                  className="user-dropdown-add-new"
+                  onClick={() => handleUserSelection('ADD_NEW')}
+                >
+                  + Add User
+                </button>
+                <div className="user-dropdown-divider"></div>
+                {getExistingStudents().map((studentName) => (
+                  <button
+                    key={studentName}
+                    type="button"
+                    className={`user-dropdown-student ${
+                      studentName === activeStudentName ? 'active' : ''
+                    }`}
+                    onClick={() => handleUserSelection(studentName)}
+                  >
+                    {studentName}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {showSettingsDropdown && (
+              <div className="hero-settings-dropdown">
+                <button type="button" onClick={resetCurrentStudentData}>Reset current student data</button>
+                <button type="button" onClick={exportAllStudentProfiles}>Export all student profiles</button>
+                <button type="button" onClick={openImportProfilesPicker}>Import student profiles</button>
+              </div>
+            )}
+
+            {showHelpPanel && (
+              <div className="hero-help-panel">
+                <p className="help-panel-title">How to use CoPi</p>
+                <div className="help-section">
+                  <p className="help-heading">Switch students</p>
+                  <p className="help-body">Tap the menu → Switch user. Each student's progress, notes, and chat are saved separately.</p>
+                </div>
+                <div className="help-section">
+                  <p className="help-heading">Oral exam mode</p>
+                  <p className="help-body">Open the CoPi tab, toggle Oral exam mode, then tap Start exam. CoPi will act as an FAA examiner and ask one question at a time.</p>
+                </div>
+                <div className="help-section">
+                  <p className="help-heading">Export &amp; import</p>
+                  <p className="help-body">Settings → Export saves all student profiles as a JSON file to your Downloads folder. Use Import to restore or transfer them.</p>
+                </div>
+                <div className="help-section">
+                  <p className="help-heading">Chat is offline?</p>
+                  <p className="help-body">Run <code>npm run dev</code> in the project folder to start the backend, then reload the page.</p>
+                </div>
+                <div className="help-section">
+                  <p className="help-heading">Where data is stored</p>
+                  <p className="help-body">All progress, notes, and chat history live in your browser's local storage — nothing is sent to a server.</p>
+                </div>
+              </div>
+            )}
+            
+            {menuOpen && !showUserDropdown && !showSettingsDropdown && !showHelpPanel && (
               <div className="hero-menu-dropdown">
-                <button type="button">Switch user</button>
-                <button type="button">Settings</button>
-                <button type="button">Help</button>
+                <button type="button" onClick={switchUser}>Switch user</button>
+                <button type="button" onClick={toggleSettingsDropdown}>Settings</button>
+                <button type="button" onClick={toggleHelpPanel}>Help</button>
                 <div className="menu-divider"></div>
-                <button type="button">Log In / Log Out</button>
+                <button type="button" className="menu-item-muted" disabled>Local mode only</button>
               </div>
             )}
             
@@ -612,7 +1711,17 @@ function App() {
                 <section className="detail-section">
                   <div className="detail-section-header">
                     <h4>Notes</h4>
-                    <span>Saved locally</span>
+                    <div className="detail-section-actions">
+                      <span>Saved locally</span>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={exportSelectedSessionNotes}
+                        disabled={!selectedSession}
+                      >
+                        Export notes
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     className="session-notes"
@@ -691,7 +1800,87 @@ function App() {
         {activeTab === 'copi' && (
           <section className="tab-content chat-content">
             <div className="chat-container">
-              <div className="chat-messages">
+              <div className="chat-history-bar">
+                <div className="chat-history-header">
+                  <span>Chat history</span>
+                  <div className="chat-history-actions">
+                    <button
+                      type="button"
+                      className="chat-history-secondary-button"
+                      onClick={toggleThreadPinned}
+                      disabled={!activeChatThread}
+                    >
+                      {activeChatThread?.pinned ? 'Unpin' : 'Pin'}
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-history-secondary-button"
+                      onClick={renameActiveThread}
+                      disabled={!activeChatThread}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-new-thread-button"
+                      onClick={createChatThread}
+                    >
+                      New chat
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-clear-history-button"
+                      onClick={clearAllChatHistory}
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                </div>
+
+                <div className="chat-history-filters">
+                  <button
+                    type="button"
+                    className={`chat-filter-chip ${chatHistoryFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setChatHistoryFilter('all')}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    className={`chat-filter-chip ${chatHistoryFilter === 'pinned' ? 'active' : ''}`}
+                    onClick={() => setChatHistoryFilter('pinned')}
+                  >
+                    Pinned
+                  </button>
+                  <button
+                    type="button"
+                    className={`chat-filter-chip ${chatHistoryFilter === 'recent' ? 'active' : ''}`}
+                    onClick={() => setChatHistoryFilter('recent')}
+                  >
+                    Recent
+                  </button>
+                </div>
+
+                <div className="chat-history-list">
+                  {visibleChatThreads.map((thread) => (
+                    <button
+                      key={thread.id}
+                      type="button"
+                      className={`chat-thread-chip ${activeChatThread?.id === thread.id ? 'active' : ''}`}
+                      onClick={() => setActiveChatThreadId(thread.id)}
+                    >
+                      <span>{thread.pinned ? '📌 ' : ''}{thread.title}</span>
+                      <small>{new Date(thread.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className={`chat-backend-banner ${chatBackendStatus.level}`} role="status" aria-live="polite">
+                {chatBackendStatus.message}
+              </div>
+
+              <div className="chat-messages" ref={chatMessagesRef} onScroll={handleChatMessagesScroll}>
                 {chatMessages.length === 0 ? (
                   <div className="chat-welcome">
                     <p className="eyebrow">Welcome to CoPi</p>
@@ -701,13 +1890,120 @@ function App() {
                 ) : (
                   chatMessages.map((msg) => (
                     <div key={msg.id} className={`chat-message ${msg.role}`}>
-                      <div className="chat-bubble">
-                        <p>{msg.content}</p>
-                        <span className="chat-time">{msg.timestamp}</span>
+                      <div className={`chat-bubble${msg.isStreaming ? ' streaming' : ''}`}>
+                        <p>{msg.content || (msg.isStreaming ? '\u00a0' : '')}{msg.isStreaming && <span className="chat-bubble-cursor" aria-hidden="true" />}</p>
+                        {!msg.isStreaming && (
+                          <span className="chat-time">{msg.timestamp}</span>
+                        )}
+                        {msg.role === 'assistant' && !msg.isStreaming ? (
+                          <div className="chat-reply-actions">
+                            <button
+                              type="button"
+                              className="chat-copy-button"
+                              onClick={() => copyReplyToClipboard(msg.id, msg.content)}
+                            >
+                              {copiedReplyId === msg.id ? 'Copied' : 'Copy'}
+                            </button>
+                            <button
+                              type="button"
+                              className="chat-save-note-button"
+                              onClick={() => saveReplyToLessonNotes(msg.id, msg.content)}
+                              disabled={!selectedSession || isInstrumentComingSoon}
+                              title={!selectedSession ? 'Select a lesson first to save notes.' : undefined}
+                            >
+                              {savedReplyId === msg.id ? 'Saved to notes' : 'Save to notes'}
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ))
                 )}
+              </div>
+
+              <div className="chat-quick-prompts" aria-label="Quick prompts">
+                {quickPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    className="chat-prompt-chip"
+                    onClick={() => setChatInput(prompt)}
+                    disabled={isSendingChat}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+
+              <div className="chat-controls-under">
+                <div className="chat-mode-bar">
+                  <span className={`chat-mode-pill ${isOralExamMode ? 'active' : ''}`}>
+                    Mode: {isOralExamMode ? 'Oral exam' : 'Study coach'}
+                  </span>
+                  <div className="chat-mode-actions">
+                    <button
+                      type="button"
+                      className="chat-history-secondary-button"
+                      onClick={() => setIsOralExamMode((current) => !current)}
+                      disabled={isSendingChat}
+                    >
+                      {isOralExamMode ? 'Exit oral mode' : 'Enable oral mode'}
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-new-thread-button"
+                      onClick={startOralExamMode}
+                      disabled={isSendingChat}
+                    >
+                      Start oral exam
+                    </button>
+                  </div>
+                </div>
+
+                <div className="chat-context-bar">
+                  <label className="chat-context-toggle">
+                    <input
+                      type="checkbox"
+                      checked={useLessonContext}
+                      onChange={(event) => setUseLessonContext(event.target.checked)}
+                      disabled={isSendingChat}
+                    />
+                    <span>Use current lesson context</span>
+                  </label>
+                  {useLessonContext && selectedSession ? (
+                    <span className="chat-context-indicator">Context: {selectedSession.title}</span>
+                  ) : (
+                    <span className="chat-context-indicator muted">Context: General coaching</span>
+                  )}
+                </div>
+
+                <div className="chat-context-preview-wrap">
+                  <button
+                    type="button"
+                    className="chat-context-preview-toggle"
+                    onClick={() => setIsContextPreviewOpen((open) => !open)}
+                  >
+                    {isContextPreviewOpen ? 'Hide context sent to CoPi' : 'Show context sent to CoPi'}
+                  </button>
+
+                  {isContextPreviewOpen ? (
+                    <div className="chat-context-preview-panel">
+                      <p><strong>Student:</strong> {chatContextPayload.student}</p>
+                      <p><strong>Rating:</strong> {chatContextPayload.rating}</p>
+                      <p><strong>Mode:</strong> {chatContextPayload.useLessonContext ? 'Lesson-specific' : 'General coaching'}</p>
+                      {chatContextPayload.useLessonContext ? (
+                        <>
+                          <p><strong>Lesson:</strong> {chatContextPayload.lessonTitle || 'Not selected'}</p>
+                          <p><strong>Focus:</strong> {chatContextPayload.lessonFocus || '—'}</p>
+                          <p><strong>Type/Status:</strong> {chatContextPayload.lessonType || '—'} / {chatContextPayload.lessonStatus || '—'}</p>
+                          <p><strong>Checklist:</strong> {chatContextPayload.checklistProgress || '—'}</p>
+                          <p><strong>Objectives:</strong> {(chatContextPayload.objectives || []).join(' • ') || '—'}</p>
+                          <p><strong>Notes:</strong> {chatContextPayload.notes ? chatContextPayload.notes.slice(0, 180) : 'No notes yet'}</p>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
               <div className="chat-input-area">
@@ -717,7 +2013,7 @@ function App() {
                   placeholder="Ask CoPi anything about your training..."
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  onKeyDown={handleChatInputKeyDown}
                   disabled={isSendingChat}
                 />
                 <button
@@ -727,6 +2023,14 @@ function App() {
                   disabled={!chatInput.trim() || isSendingChat}
                 >
                   {isSendingChat ? 'Sending...' : 'Send'}
+                </button>
+                <button
+                  className="chat-clear-input-button"
+                  onClick={handleClearChatInputOrThread}
+                  type="button"
+                  disabled={isSendingChat || (!chatMessages.length && !chatInput.trim())}
+                >
+                  Clear
                 </button>
               </div>
             </div>
@@ -779,7 +2083,68 @@ function App() {
             </div>
           </section>
         )}
+
+        {clearUndoState ? (
+          <div className="note-save-toast">
+            <span>{clearUndoState.message}</span>
+            <button type="button" className="note-save-toast-action" onClick={undoClearAction}>Undo</button>
+          </div>
+        ) : null}
+        {!clearUndoState && noteToastMessage ? <div className="note-save-toast">{noteToastMessage}</div> : null}
       </main>
+
+      {confirmModal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setConfirmModal(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <p className="modal-title">{confirmModal.title}</p>
+            <p className="modal-body">{confirmModal.body}</p>
+            <div className="modal-actions">
+              <button type="button" className="modal-btn modal-btn-cancel" onClick={() => setConfirmModal(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`modal-btn ${confirmModal.danger ? 'modal-btn-danger' : 'modal-btn-confirm'}`}
+                onClick={() => { confirmModal.onConfirm(); setConfirmModal(null); }}
+              >
+                {confirmModal.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {promptModal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setPromptModal(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <p className="modal-title">{promptModal.title}</p>
+            <input
+              className="modal-input"
+              type="text"
+              value={promptValue}
+              onChange={(e) => setPromptValue(e.target.value)}
+              placeholder={promptModal.placeholder}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { promptModal.onConfirm(promptValue); setPromptModal(null); }
+                if (e.key === 'Escape') { setPromptModal(null); }
+              }}
+            />
+            <div className="modal-actions">
+              <button type="button" className="modal-btn modal-btn-cancel" onClick={() => setPromptModal(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="modal-btn modal-btn-confirm"
+                onClick={() => { promptModal.onConfirm(promptValue); setPromptModal(null); }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
