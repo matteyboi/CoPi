@@ -23,6 +23,8 @@ const statusLabel = {
 
 const statusOrder = ['planned', 'in-progress', 'completed'];
 
+const GENERIC_CHAT_TITLES = new Set(['Conversation', 'New chat']);
+
 const createDefaultChatThread = () => ({
   id: 'chat-default',
   title: 'Conversation',
@@ -51,6 +53,37 @@ const writeStudentProfiles = (profiles) => {
   }
 
   window.localStorage.setItem(STUDENT_PROFILES_STORAGE_KEY, JSON.stringify(profiles));
+};
+
+const isGenericChatTitle = (title) => GENERIC_CHAT_TITLES.has(title) || /^Chat \d+$/.test(String(title || ''));
+
+const sanitizeThreadTitle = (title, fallback = 'Conversation') => {
+  const nextTitle = String(title || '')
+    .replace(/\s+/g, ' ')
+    .replace(/^['"“”‘’]+|['"“”‘’]+$/g, '')
+    .trim()
+    .slice(0, 48);
+
+  return nextTitle || fallback;
+};
+
+const buildFallbackThreadTitle = (messages) => {
+  const firstUserMessage = messages.find((message) => message.role === 'user' && message.content)?.content;
+  if (!firstUserMessage) {
+    return 'Conversation';
+  }
+
+  const compact = String(firstUserMessage)
+    .replace(/\s+/g, ' ')
+    .replace(/[?.!].*$/, '')
+    .trim();
+
+  if (!compact) {
+    return 'Conversation';
+  }
+
+  const words = compact.split(' ').slice(0, 6).join(' ');
+  return sanitizeThreadTitle(words, 'Conversation');
 };
 
 function App() {
@@ -163,7 +196,6 @@ function App() {
 
     return window.localStorage.getItem(ACTIVE_CHAT_THREAD_STORAGE_KEY) ?? 'chat-default';
   });
-  const [chatHistoryFilter, setChatHistoryFilter] = useState('all');
   const [chatInput, setChatInput] = useState('');
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -511,35 +543,17 @@ function App() {
 
   const selectedChecklistState = selectedSession ? sessionChecklist[selectedSession.id] ?? {} : {};
   const selectedChecklistCompleted = selectedSession?.checklist?.filter((item) => selectedChecklistState[item]).length ?? 0;
-  const sortedChatThreads = useMemo(
-    () =>
-      [...chatThreads].sort((a, b) => {
-        if (a.pinned !== b.pinned) {
-          return a.pinned ? -1 : 1;
-        }
-
-        return new Date(b.updatedAt) - new Date(a.updatedAt);
-      }),
-    [chatThreads]
-  );
-  const recentChatThreads = useMemo(
+  const visibleChatThreads = useMemo(
     () => [...chatThreads].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
     [chatThreads]
   );
-  const visibleChatThreads = useMemo(() => {
-    if (chatHistoryFilter === 'pinned') {
-      return sortedChatThreads.filter((thread) => thread.pinned);
-    }
-
-    if (chatHistoryFilter === 'recent') {
-      return recentChatThreads;
-    }
-
-    return sortedChatThreads;
-  }, [chatHistoryFilter, recentChatThreads, sortedChatThreads]);
   const activeChatThread = useMemo(
     () => chatThreads.find((thread) => thread.id === activeChatThreadId) ?? chatThreads[0] ?? null,
     [activeChatThreadId, chatThreads]
+  );
+  const previousChatThreads = useMemo(
+    () => visibleChatThreads.filter((thread) => thread.id !== activeChatThreadId && thread.messages.length > 0),
+    [activeChatThreadId, visibleChatThreads]
   );
   const chatMessages = activeChatThread?.messages ?? [];
   const buildOralExamStarterPrompt = useCallback(() => {
@@ -720,7 +734,7 @@ function App() {
   const createChatThread = () => {
     const newThread = {
       id: `chat-${Date.now()}`,
-      title: `Chat ${chatThreads.length + 1}`,
+      title: 'New chat',
       pinned: false,
       updatedAt: new Date().toISOString(),
       messages: [],
@@ -794,10 +808,50 @@ function App() {
     });
   };
 
+  const deleteChatThread = (threadId) => {
+    if (!threadId) {
+      return;
+    }
+
+    const threadToDelete = chatThreads.find((thread) => thread.id === threadId);
+    if (!threadToDelete) {
+      return;
+    }
+
+    openConfirmModal({
+      title: 'Delete Conversation',
+      body: `Delete "${threadToDelete.title}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: () => {
+        const snapshot = {
+          chatThreads,
+          activeChatThreadId,
+        };
+
+        setChatThreads((currentThreads) => {
+          const remainingThreads = currentThreads.filter((thread) => thread.id !== threadId);
+          if (remainingThreads.length > 0) {
+            return remainingThreads;
+          }
+
+          return [createDefaultChatThread()];
+        });
+
+        if (threadId === activeChatThreadId) {
+          const fallbackThread = chatThreads.find((thread) => thread.id !== threadId);
+          setActiveChatThreadId(fallbackThread?.id ?? 'chat-default');
+        }
+
+        scheduleClearUndo(snapshot, `Deleted ${threadToDelete.title}`);
+      },
+    });
+  };
+
   const clearAllChatHistory = () => {
     openConfirmModal({
-      title: 'Clear All History',
-      body: 'Clear all chat history across all threads? This cannot be undone.',
+      title: 'Clear Active Chat',
+      body: `Clear all messages in "${activeChatThread?.title || 'this chat'}"? This cannot be undone.`,
       confirmLabel: 'Clear All',
       danger: true,
       onConfirm: () => {
@@ -806,28 +860,25 @@ function App() {
           activeChatThreadId,
         };
 
-        const resetThread = {
-          id: 'chat-default',
-          title: 'Conversation',
-          pinned: false,
-          updatedAt: new Date().toISOString(),
-          messages: [],
-        };
+        if (!activeChatThread) {
+          return;
+        }
 
-        setChatThreads([resetThread]);
-        setActiveChatThreadId(resetThread.id);
-        scheduleClearUndo(snapshot, 'Cleared all chat history');
+        setChatThreads((currentThreads) =>
+          currentThreads.map((thread) =>
+            thread.id === activeChatThread.id
+              ? {
+                  ...thread,
+                  messages: [],
+                  updatedAt: new Date().toISOString(),
+                }
+              : thread
+          )
+        );
+
+        scheduleClearUndo(snapshot, `Cleared ${activeChatThread.title}`);
       },
     });
-  };
-
-  const handleClearChatInputOrThread = () => {
-    if (chatInput.trim()) {
-      setChatInput('');
-      return;
-    }
-
-    clearActiveChat();
   };
 
   const exportSelectedSessionNotes = () => {
@@ -870,53 +921,44 @@ function App() {
     });
   };
 
-  const toggleThreadPinned = () => {
-    if (!activeChatThread) {
+  const maybeGenerateThreadTitle = useCallback(async (threadId, messages, context, currentTitle) => {
+    if (!threadId || !isGenericChatTitle(currentTitle)) {
       return;
     }
 
-    setChatThreads((currentThreads) =>
-      currentThreads.map((thread) =>
-        thread.id === activeChatThread.id
-          ? {
-              ...thread,
-              pinned: !thread.pinned,
-            }
-          : thread
-      )
-    );
-  };
+    const fallbackTitle = buildFallbackThreadTitle(messages);
 
-  const renameActiveThread = () => {
-    if (!activeChatThread) {
-      return;
+    try {
+      const response = await fetch('/api/chat/title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, context }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Title generation unavailable');
+      }
+
+      const data = await response.json();
+      const nextTitle = sanitizeThreadTitle(data?.title, fallbackTitle);
+
+      setChatThreads((currentThreads) =>
+        currentThreads.map((thread) =>
+          thread.id === threadId && isGenericChatTitle(thread.title)
+            ? { ...thread, title: nextTitle }
+            : thread
+        )
+      );
+    } catch {
+      setChatThreads((currentThreads) =>
+        currentThreads.map((thread) =>
+          thread.id === threadId && isGenericChatTitle(thread.title)
+            ? { ...thread, title: fallbackTitle }
+            : thread
+        )
+      );
     }
-
-    openPromptModal({
-      title: 'Rename Thread',
-      placeholder: 'Thread name...',
-      defaultValue: activeChatThread.title,
-      onConfirm: (nextTitle) => {
-        const sanitizedTitle = nextTitle.trim().slice(0, 48);
-        if (!sanitizedTitle) {
-          return;
-        }
-
-        setChatThreads((currentThreads) =>
-          currentThreads.map((thread) =>
-            thread.id === activeChatThread.id
-              ? {
-                  ...thread,
-                  title: sanitizedTitle,
-                  updatedAt: new Date().toISOString(),
-                }
-              : thread
-          )
-        );
-        setNoteToastMessage(`Renamed to ${sanitizedTitle}`);
-      },
-    });
-  };
+  }, []);
 
   const saveReplyToLessonNotes = (messageId, content) => {
     if (!selectedSession || isInstrumentComingSoon) {
@@ -973,6 +1015,9 @@ function App() {
     };
 
     const updatedMessages = [...chatMessages, newMessage];
+    const shouldAutoTitleThread = isGenericChatTitle(activeChatThread.title)
+      && updatedMessages.filter((message) => message.role === 'user').length === 1;
+
     setChatThreads((currentThreads) =>
       currentThreads.map((thread) =>
         thread.id === threadId
@@ -980,6 +1025,11 @@ function App() {
           : thread
       )
     );
+
+    if (shouldAutoTitleThread) {
+      maybeGenerateThreadTitle(threadId, updatedMessages, overrideContext ?? chatContextPayload, activeChatThread.title);
+    }
+
     setChatInput('');
     setIsSendingChat(true);
 
@@ -1805,89 +1855,59 @@ function App() {
         {activeTab === 'copi' && (
           <section className="tab-content chat-content">
             <div className="chat-container">
-              <details className="chat-disclosure chat-disclosure-history">
-                <summary className="chat-disclosure-summary">
-                  <span>Conversations</span>
-                  <small>{visibleChatThreads.length} thread{visibleChatThreads.length === 1 ? '' : 's'} · {activeChatThread?.title || 'No active chat'}</small>
-                </summary>
-                <div className="chat-disclosure-body">
-                  <div className="chat-history-bar">
-                    <div className="chat-history-header">
-                      <span>Manage history</span>
-                      <div className="chat-history-actions">
-                        <button
-                          type="button"
-                          className="chat-history-secondary-button"
-                          onClick={toggleThreadPinned}
-                          disabled={!activeChatThread}
-                        >
-                          {activeChatThread?.pinned ? 'Unpin' : 'Pin'}
-                        </button>
-                        <button
-                          type="button"
-                          className="chat-history-secondary-button"
-                          onClick={renameActiveThread}
-                          disabled={!activeChatThread}
-                        >
-                          Rename
-                        </button>
-                        <button
-                          type="button"
-                          className="chat-new-thread-button"
-                          onClick={createChatThread}
-                        >
-                          New chat
-                        </button>
-                        <button
-                          type="button"
-                          className="chat-clear-history-button"
-                          onClick={clearAllChatHistory}
-                        >
-                          Clear all
-                        </button>
-                      </div>
+              <div className="chat-history-bar">
+                <div className="chat-history-header">
+                  <div className="chat-history-actions">
+                    <div className="chat-history-actions-left">
+                      <button
+                        type="button"
+                        className="chat-new-thread-button"
+                        onClick={createChatThread}
+                      >
+                        New chat
+                      </button>
+                      <details className="chat-history-dropdown">
+                        <summary className="chat-history-dropdown-toggle">History</summary>
+                        <div className="chat-history-dropdown-menu">
+                          {previousChatThreads.length === 0 ? (
+                            <p className="chat-history-empty">No previous conversations yet.</p>
+                          ) : (
+                            previousChatThreads.map((thread) => (
+                              <div key={thread.id} className="chat-history-item">
+                                <button
+                                  type="button"
+                                  className="chat-history-item-main"
+                                  onClick={() => setActiveChatThreadId(thread.id)}
+                                >
+                                  <span>{thread.title}</span>
+                                  <small>{new Date(thread.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</small>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="chat-history-item-delete"
+                                  onClick={() => deleteChatThread(thread.id)}
+                                  aria-label={`Delete conversation ${thread.title}`}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </details>
                     </div>
-
-                    <div className="chat-history-filters">
+                    <div className="chat-history-actions-right">
                       <button
                         type="button"
-                        className={`chat-filter-chip ${chatHistoryFilter === 'all' ? 'active' : ''}`}
-                        onClick={() => setChatHistoryFilter('all')}
+                        className="chat-clear-history-button"
+                        onClick={clearAllChatHistory}
                       >
-                        All
+                        Clear
                       </button>
-                      <button
-                        type="button"
-                        className={`chat-filter-chip ${chatHistoryFilter === 'pinned' ? 'active' : ''}`}
-                        onClick={() => setChatHistoryFilter('pinned')}
-                      >
-                        Pinned
-                      </button>
-                      <button
-                        type="button"
-                        className={`chat-filter-chip ${chatHistoryFilter === 'recent' ? 'active' : ''}`}
-                        onClick={() => setChatHistoryFilter('recent')}
-                      >
-                        Recent
-                      </button>
-                    </div>
-
-                    <div className="chat-history-list">
-                      {visibleChatThreads.map((thread) => (
-                        <button
-                          key={thread.id}
-                          type="button"
-                          className={`chat-thread-chip ${activeChatThread?.id === thread.id ? 'active' : ''}`}
-                          onClick={() => setActiveChatThreadId(thread.id)}
-                        >
-                          <span>{thread.pinned ? '📌 ' : ''}{thread.title}</span>
-                          <small>{new Date(thread.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</small>
-                        </button>
-                      ))}
                     </div>
                   </div>
                 </div>
-              </details>
+              </div>
 
               {(chatBackendStatus.level === 'offline' || chatBackendStatus.level === 'missing-key') && (
                 <div className={`chat-backend-banner ${chatBackendStatus.level}`} role="status" aria-live="polite">
@@ -1901,6 +1921,20 @@ function App() {
                     <p className="eyebrow">Welcome to CoPi</p>
                     <h3>Hey! I'm your AI flight training assistant.</h3>
                     <p>Ask me anything about your training, need help with a concept, or want study tips. I'm here to help you succeed!</p>
+                    <div className="chat-welcome-prompts" aria-label="Example prompts">
+                      <span className="chat-welcome-prompts-label">Try:</span>
+                      {quickPrompts.map((prompt) => (
+                        <button
+                          key={prompt}
+                          type="button"
+                          className="chat-prompt-chip chat-welcome-prompt-chip"
+                          onClick={() => setChatInput(prompt)}
+                          disabled={isSendingChat}
+                        >
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   chatMessages.map((msg) => (
@@ -1937,20 +1971,6 @@ function App() {
               </div>
 
               <div className="chat-input-area">
-                <div className="chat-input-examples" aria-label="Example prompts">
-                  <span className="chat-input-examples-label">Try:</span>
-                  {quickPrompts.map((prompt) => (
-                    <button
-                      key={prompt}
-                      type="button"
-                      className="chat-prompt-chip chat-input-example-chip"
-                      onClick={() => setChatInput(prompt)}
-                      disabled={isSendingChat}
-                    >
-                      {prompt}
-                    </button>
-                  ))}
-                </div>
                 <input
                   type="text"
                   className="chat-input"
@@ -1967,14 +1987,6 @@ function App() {
                   disabled={!chatInput.trim() || isSendingChat}
                 >
                   {isSendingChat ? 'Sending...' : 'Send'}
-                </button>
-                <button
-                  className="chat-clear-input-button"
-                  onClick={handleClearChatInputOrThread}
-                  type="button"
-                  disabled={isSendingChat || (!chatMessages.length && !chatInput.trim())}
-                >
-                  Clear
                 </button>
               </div>
             </div>

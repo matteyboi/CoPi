@@ -45,6 +45,17 @@ function buildSystemPrompt(context) {
     ...lines,
   ].join('\n');
 }
+
+async function createOpenAIResponse(payload) {
+  return fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
 // ────────────────────────────────────────────────────────────────────────────
 
 app.get('/api/health', (_req, res) => {
@@ -75,20 +86,13 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        input: [
-          { role: 'system', content: systemPrompt },
-          ...recentMessages,
-        ],
-        temperature: 0.6,
-      }),
+    const response = await createOpenAIResponse({
+      model: OPENAI_MODEL,
+      input: [
+        { role: 'system', content: systemPrompt },
+        ...recentMessages,
+      ],
+      temperature: 0.6,
     });
 
     if (!response.ok) {
@@ -100,6 +104,51 @@ app.post('/api/chat', async (req, res) => {
     const reply = data.output_text?.trim() || 'I could not generate a response right now.';
 
     return res.json({ reply, source: 'openai' });
+  } catch (error) {
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown server error',
+    });
+  }
+});
+
+app.post('/api/chat/title', async (req, res) => {
+  const { messages = [], context = {} } = req.body || {};
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'messages is required' });
+  }
+
+  const recentMessages = buildRecentMessages(messages).slice(0, 4);
+  const systemPrompt = [
+    'You create short conversation titles for a flight-training AI chat.',
+    'Return only a concise title, 2 to 5 words, with no quotes and no punctuation at the end.',
+    'Prefer the main student goal or topic.',
+    buildSystemPrompt(context),
+  ].join('\n');
+
+  if (!OPENAI_API_KEY) {
+    const fallback = recentMessages.find((message) => message.role === 'user')?.content || 'Conversation';
+    return res.json({ title: String(fallback).split(/[?.!]/)[0].trim().split(/\s+/).slice(0, 6).join(' ') || 'Conversation', source: 'fallback' });
+  }
+
+  try {
+    const response = await createOpenAIResponse({
+      model: OPENAI_MODEL,
+      input: [
+        { role: 'system', content: systemPrompt },
+        ...recentMessages,
+      ],
+      temperature: 0.3,
+    });
+
+    if (!response.ok) {
+      const apiError = await response.text();
+      return res.status(502).json({ error: `OpenAI request failed: ${apiError}` });
+    }
+
+    const data = await response.json();
+    const title = data.output_text?.trim() || 'Conversation';
+    return res.json({ title, source: 'openai' });
   } catch (error) {
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown server error',
@@ -131,18 +180,11 @@ app.post('/api/chat/stream', async (req, res) => {
   }
 
   try {
-    const upstream = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        input: [{ role: 'system', content: systemPrompt }, ...recentMessages],
-        temperature: 0.6,
-        stream: true,
-      }),
+    const upstream = await createOpenAIResponse({
+      model: OPENAI_MODEL,
+      input: [{ role: 'system', content: systemPrompt }, ...recentMessages],
+      temperature: 0.6,
+      stream: true,
     });
 
     if (!upstream.ok) {
