@@ -1,3 +1,14 @@
+.copi-tab {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+}
+.copi-tab img {
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
 /* AI Teaching Card Styles */
 .ai-teaching-card {
   background: rgba(11, 18, 32, 0.85);

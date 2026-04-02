@@ -2510,7 +2510,7 @@ function App() {
             type="button"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
           >
-            <img src={logoAI} alt="CoPi Logo" style={{ height: 72, width: 72, objectFit: 'contain' }} />
+            <img src={logoAI} alt="CoPi Logo" style={{ height: 96, width: 96, objectFit: 'contain' }} />
           </button>
           <button
             className={`tab-bubble ${activeTab === 'progress' ? 'active' : ''}`}
