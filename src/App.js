@@ -554,24 +554,24 @@ function App() {
     if (isOralExamMode) {
       if (useLessonContext && selectedSession) {
         return [
-          buildOralExamStarterPrompt(),
-          `Ask me 5 oral questions about ${selectedSession.title} and grade each answer briefly.`,
-          `Give me the hardest oral question for ${selectedSession.title} and then coach me to a stronger answer.`,
+          'Start oral exam',
+          `5 oral questions: ${selectedSession.title}`,
+          `Hard oral: ${selectedSession.title}`,
         ];
       }
 
       return [
-        buildOralExamStarterPrompt(),
-        'Ask me 5 mixed private pilot oral questions and score my answers clearly.',
-        'Give me one tricky oral question at a time until I say stop.',
+        'Start oral exam',
+        '5 oral questions',
+        'Tricky oral question',
       ];
     }
 
     if (!useLessonContext || !selectedSession) {
       return [
-        'Give me a 10-minute private pilot study plan for today.',
-        'Ask me 5 mixed oral-style questions and grade my answers.',
-        'What are the top 3 mistakes student pilots make and how do I avoid them?',
+        'Study plan',
+        'Quiz me',
+        'Top mistakes',
       ];
     }
 
@@ -587,14 +587,14 @@ function App() {
         : `Give me an efficient study strategy for ${lessonTitle} and what to memorize first.`;
 
     const statusPrompt = lessonStatus === 'completed'
-      ? `Debrief ${lessonTitle}: what should I keep, fix, and practice next session?`
+      ? `Debrief: ${lessonTitle}`
       : lessonStatus === 'in-progress'
-        ? `I’m currently working on ${lessonTitle}. What should I focus on in the next 30 minutes?`
-        : `Before I start ${lessonTitle}, what should I prep so I show up ready?`;
+        ? `Focus: ${lessonTitle}`
+        : `Prep: ${lessonTitle}`;
 
     return [
-      `Quiz me on ${lessonTitle} with short-answer questions tied to: ${primaryObjective}`,
-      typePrompt,
+      `Quiz: ${lessonTitle}`,
+      typePrompt.replace('Give me a flight brief for ', 'Brief: ').replace('Teach me ', 'Teach: ').replace('Give me an efficient study strategy for ', 'Study: ').replace(' with setup, tolerances, and common errors.', '').replace(' in plain language, then quiz me with 3 oral questions.', '').replace(' and what to memorize first.', ''),
       statusPrompt,
     ];
   }, [buildOralExamStarterPrompt, isOralExamMode, selectedSession, useLessonContext]);
@@ -1409,6 +1409,11 @@ function App() {
 
             {showSettingsDropdown && (
               <div className="hero-settings-dropdown">
+                <div className={`settings-status-card ${chatBackendStatus.level}`} role="status" aria-live="polite">
+                  <span className="settings-status-label">CoPi AI</span>
+                  <span className="settings-status-message">{chatBackendStatus.message}</span>
+                </div>
+                <div className="menu-divider"></div>
                 <button type="button" onClick={resetCurrentStudentData}>Reset current student data</button>
                 <button type="button" onClick={exportAllStudentProfiles}>Export all student profiles</button>
                 <button type="button" onClick={openImportProfilesPicker}>Import student profiles</button>
@@ -1800,85 +1805,95 @@ function App() {
         {activeTab === 'copi' && (
           <section className="tab-content chat-content">
             <div className="chat-container">
-              <div className="chat-history-bar">
-                <div className="chat-history-header">
-                  <span>Chat history</span>
-                  <div className="chat-history-actions">
-                    <button
-                      type="button"
-                      className="chat-history-secondary-button"
-                      onClick={toggleThreadPinned}
-                      disabled={!activeChatThread}
-                    >
-                      {activeChatThread?.pinned ? 'Unpin' : 'Pin'}
-                    </button>
-                    <button
-                      type="button"
-                      className="chat-history-secondary-button"
-                      onClick={renameActiveThread}
-                      disabled={!activeChatThread}
-                    >
-                      Rename
-                    </button>
-                    <button
-                      type="button"
-                      className="chat-new-thread-button"
-                      onClick={createChatThread}
-                    >
-                      New chat
-                    </button>
-                    <button
-                      type="button"
-                      className="chat-clear-history-button"
-                      onClick={clearAllChatHistory}
-                    >
-                      Clear all
-                    </button>
+              <details className="chat-disclosure chat-disclosure-history">
+                <summary className="chat-disclosure-summary">
+                  <span>Conversations</span>
+                  <small>{visibleChatThreads.length} thread{visibleChatThreads.length === 1 ? '' : 's'} · {activeChatThread?.title || 'No active chat'}</small>
+                </summary>
+                <div className="chat-disclosure-body">
+                  <div className="chat-history-bar">
+                    <div className="chat-history-header">
+                      <span>Manage history</span>
+                      <div className="chat-history-actions">
+                        <button
+                          type="button"
+                          className="chat-history-secondary-button"
+                          onClick={toggleThreadPinned}
+                          disabled={!activeChatThread}
+                        >
+                          {activeChatThread?.pinned ? 'Unpin' : 'Pin'}
+                        </button>
+                        <button
+                          type="button"
+                          className="chat-history-secondary-button"
+                          onClick={renameActiveThread}
+                          disabled={!activeChatThread}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          className="chat-new-thread-button"
+                          onClick={createChatThread}
+                        >
+                          New chat
+                        </button>
+                        <button
+                          type="button"
+                          className="chat-clear-history-button"
+                          onClick={clearAllChatHistory}
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="chat-history-filters">
+                      <button
+                        type="button"
+                        className={`chat-filter-chip ${chatHistoryFilter === 'all' ? 'active' : ''}`}
+                        onClick={() => setChatHistoryFilter('all')}
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        className={`chat-filter-chip ${chatHistoryFilter === 'pinned' ? 'active' : ''}`}
+                        onClick={() => setChatHistoryFilter('pinned')}
+                      >
+                        Pinned
+                      </button>
+                      <button
+                        type="button"
+                        className={`chat-filter-chip ${chatHistoryFilter === 'recent' ? 'active' : ''}`}
+                        onClick={() => setChatHistoryFilter('recent')}
+                      >
+                        Recent
+                      </button>
+                    </div>
+
+                    <div className="chat-history-list">
+                      {visibleChatThreads.map((thread) => (
+                        <button
+                          key={thread.id}
+                          type="button"
+                          className={`chat-thread-chip ${activeChatThread?.id === thread.id ? 'active' : ''}`}
+                          onClick={() => setActiveChatThreadId(thread.id)}
+                        >
+                          <span>{thread.pinned ? '📌 ' : ''}{thread.title}</span>
+                          <small>{new Date(thread.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</small>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
+              </details>
 
-                <div className="chat-history-filters">
-                  <button
-                    type="button"
-                    className={`chat-filter-chip ${chatHistoryFilter === 'all' ? 'active' : ''}`}
-                    onClick={() => setChatHistoryFilter('all')}
-                  >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    className={`chat-filter-chip ${chatHistoryFilter === 'pinned' ? 'active' : ''}`}
-                    onClick={() => setChatHistoryFilter('pinned')}
-                  >
-                    Pinned
-                  </button>
-                  <button
-                    type="button"
-                    className={`chat-filter-chip ${chatHistoryFilter === 'recent' ? 'active' : ''}`}
-                    onClick={() => setChatHistoryFilter('recent')}
-                  >
-                    Recent
-                  </button>
+              {(chatBackendStatus.level === 'offline' || chatBackendStatus.level === 'missing-key') && (
+                <div className={`chat-backend-banner ${chatBackendStatus.level}`} role="status" aria-live="polite">
+                  {chatBackendStatus.message}
                 </div>
-
-                <div className="chat-history-list">
-                  {visibleChatThreads.map((thread) => (
-                    <button
-                      key={thread.id}
-                      type="button"
-                      className={`chat-thread-chip ${activeChatThread?.id === thread.id ? 'active' : ''}`}
-                      onClick={() => setActiveChatThreadId(thread.id)}
-                    >
-                      <span>{thread.pinned ? '📌 ' : ''}{thread.title}</span>
-                      <small>{new Date(thread.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`chat-backend-banner ${chatBackendStatus.level}`} role="status" aria-live="polite">
-                {chatBackendStatus.message}
-              </div>
+              )}
 
               <div className="chat-messages" ref={chatMessagesRef} onScroll={handleChatMessagesScroll}>
                 {chatMessages.length === 0 ? (
@@ -1921,92 +1936,21 @@ function App() {
                 )}
               </div>
 
-              <div className="chat-quick-prompts" aria-label="Quick prompts">
-                {quickPrompts.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    className="chat-prompt-chip"
-                    onClick={() => setChatInput(prompt)}
-                    disabled={isSendingChat}
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-
-              <div className="chat-controls-under">
-                <div className="chat-mode-bar">
-                  <span className={`chat-mode-pill ${isOralExamMode ? 'active' : ''}`}>
-                    Mode: {isOralExamMode ? 'Oral exam' : 'Study coach'}
-                  </span>
-                  <div className="chat-mode-actions">
-                    <button
-                      type="button"
-                      className="chat-history-secondary-button"
-                      onClick={() => setIsOralExamMode((current) => !current)}
-                      disabled={isSendingChat}
-                    >
-                      {isOralExamMode ? 'Exit oral mode' : 'Enable oral mode'}
-                    </button>
-                    <button
-                      type="button"
-                      className="chat-new-thread-button"
-                      onClick={startOralExamMode}
-                      disabled={isSendingChat}
-                    >
-                      Start oral exam
-                    </button>
-                  </div>
-                </div>
-
-                <div className="chat-context-bar">
-                  <label className="chat-context-toggle">
-                    <input
-                      type="checkbox"
-                      checked={useLessonContext}
-                      onChange={(event) => setUseLessonContext(event.target.checked)}
-                      disabled={isSendingChat}
-                    />
-                    <span>Use current lesson context</span>
-                  </label>
-                  {useLessonContext && selectedSession ? (
-                    <span className="chat-context-indicator">Context: {selectedSession.title}</span>
-                  ) : (
-                    <span className="chat-context-indicator muted">Context: General coaching</span>
-                  )}
-                </div>
-
-                <div className="chat-context-preview-wrap">
-                  <button
-                    type="button"
-                    className="chat-context-preview-toggle"
-                    onClick={() => setIsContextPreviewOpen((open) => !open)}
-                  >
-                    {isContextPreviewOpen ? 'Hide context sent to CoPi' : 'Show context sent to CoPi'}
-                  </button>
-
-                  {isContextPreviewOpen ? (
-                    <div className="chat-context-preview-panel">
-                      <p><strong>Student:</strong> {chatContextPayload.student}</p>
-                      <p><strong>Rating:</strong> {chatContextPayload.rating}</p>
-                      <p><strong>Mode:</strong> {chatContextPayload.useLessonContext ? 'Lesson-specific' : 'General coaching'}</p>
-                      {chatContextPayload.useLessonContext ? (
-                        <>
-                          <p><strong>Lesson:</strong> {chatContextPayload.lessonTitle || 'Not selected'}</p>
-                          <p><strong>Focus:</strong> {chatContextPayload.lessonFocus || '—'}</p>
-                          <p><strong>Type/Status:</strong> {chatContextPayload.lessonType || '—'} / {chatContextPayload.lessonStatus || '—'}</p>
-                          <p><strong>Checklist:</strong> {chatContextPayload.checklistProgress || '—'}</p>
-                          <p><strong>Objectives:</strong> {(chatContextPayload.objectives || []).join(' • ') || '—'}</p>
-                          <p><strong>Notes:</strong> {chatContextPayload.notes ? chatContextPayload.notes.slice(0, 180) : 'No notes yet'}</p>
-                        </>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
               <div className="chat-input-area">
+                <div className="chat-input-examples" aria-label="Example prompts">
+                  <span className="chat-input-examples-label">Try:</span>
+                  {quickPrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="chat-prompt-chip chat-input-example-chip"
+                      onClick={() => setChatInput(prompt)}
+                      disabled={isSendingChat}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="text"
                   className="chat-input"
