@@ -2012,7 +2012,7 @@ function App() {
                   ))}
                 </ul>
               ) : (
-                <p className="planned-lessons-empty">No planned lessons saved yet.</p>
+                <p className="planned-lessons-empty">Every great pilot starts with day one—add your first planned lesson to begin your journey!</p>
               )}
             </section>
             {/* Log Lesson Day UI removed as requested */}
