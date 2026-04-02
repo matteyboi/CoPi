@@ -13,9 +13,14 @@
 .ai-teaching-header h3 {
   color: #cc5500;
   font-size: 1.3rem;
-  margin: 0;
+  margin: 0 auto 0 auto;
   text-align: center;
-  font-weight: bold;
+}
+.planned-lessons-header h3 {
+  color: #cc5500;
+  font-size: 1.3rem;
+  margin: 0 auto 0 auto;
+  text-align: center;
 }
 .ai-teaching-body {
   color: #e0f2fe;
@@ -2546,9 +2551,13 @@
 }
 
 .planned-lessons-header h3 {
-  margin: 0;
-  font-size: 1.05rem;
-  color: #e2e8f0;
+  color: #cc5500 !important;
+  text-align: center;
+  margin: 0 auto !important;
+  font-size: 1.3rem !important;
+}
+.planned-lessons-header {
+  display: block !important;
 }
 
 .planned-save-button {
