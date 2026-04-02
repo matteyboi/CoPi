@@ -143,21 +143,199 @@ function transformSyllabus() {
       id: `phase-${stageIndex + 1}`,
       title: stage.title,
       description: `Required pass tasks for ${stage.title}. Complete each task to move forward.`,
-      sessions: stage.tasks.map((taskTitle, lessonIndex) => ({
-        id: `s${stageIndex + 1}-${lessonIndex + 1}`,
-        legacyId: `${stageIndex}:${lessonIndex}`,
-        title: taskTitle,
-        stageTitle: stage.title,
-        type: inferType(taskTitle),
-        duration: inferDuration(taskTitle),
-        status: inferStatus(null),
-        focus: `Demonstrate pass-level proficiency in ${taskTitle.toLowerCase()}.`,
-        notes: '',
-        rating: null,
-        objectives: buildObjectives(taskTitle, stage.title),
-        checklist: buildChecklist(taskTitle),
-        aiPrompt: buildAiPrompt(taskTitle, stage.title, null),
-      })),
+      sessions: stage.tasks.map((taskTitle, lessonIndex) => {
+        // Assign an array of official sources (regulations, ACS, handbooks, etc.) for each session
+        let standards = [];
+        // Example for stacking: [{ref: '§61.87', link: '...'}, {ref: 'AFH Ch. 3', link: '...'}]
+        if (stageIndex === 0) {
+          const links = [
+            [
+              {ref: '§61.87', link: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61'},
+              {ref: 'AFH Ch. 2', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: '§61.87', link: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61'},
+              {ref: 'AFH Ch. 5', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AC 61-65H', link: 'https://www.faa.gov/regulations_policies/advisory_circulars/index.cfm/go/document.information/documentID/1020027'},
+              {ref: 'AFH Ch. 3', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 3', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 3', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: '§91.129', link: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-91'}
+            ],
+            [
+              {ref: 'AFH Ch. 3', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 3', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 7', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 8', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 8', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 8', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 8', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 8', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+          ];
+          standards = links[lessonIndex] || [];
+        } else if (stageIndex === 1) {
+          const links = [
+            [
+              {ref: 'AFH Ch. 5', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 8', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 6', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 4', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 4', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 6', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 6', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 6', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'IPH Ch. 2', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/instrument_procedures_handbook/media/FAA-H-8083-16B.pdf'}
+            ],
+            [
+              {ref: 'IPH Ch. 2', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/instrument_procedures_handbook/media/FAA-H-8083-16B.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 16', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 16', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 16', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 16', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+          ];
+          standards = links[lessonIndex] || [];
+        } else if (stageIndex === 2) {
+          const links = [
+            [
+              {ref: '§61.87', link: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61'}
+            ],
+            [
+              {ref: '§61.87', link: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61'}
+            ],
+            [
+              {ref: 'AFH Ch. 5', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 8', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 5', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 8', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 8', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 17', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 4', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 16', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 16', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+          ];
+          standards = links[lessonIndex] || [];
+        } else if (stageIndex === 3) {
+          const links = [
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+            [
+              {ref: 'AFH Ch. 15', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
+            ],
+          ];
+          standards = links[lessonIndex] || [];
+        }
+        if (!standards.length) {
+          standards = [
+            {ref: 'FAA Handbooks', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/'}
+          ];
+        }
+        return {
+          id: `s${stageIndex + 1}-${lessonIndex + 1}`,
+          legacyId: `${stageIndex}:${lessonIndex}`,
+          title: taskTitle,
+          stageTitle: stage.title,
+          type: inferType(taskTitle),
+          duration: inferDuration(taskTitle),
+          status: inferStatus(null),
+          focus: `Demonstrate pass-level proficiency in ${taskTitle.toLowerCase()}.`,
+          notes: '',
+          rating: null,
+          objectives: buildObjectives(taskTitle, stage.title),
+          checklist: buildChecklist(taskTitle),
+          aiPrompt: buildAiPrompt(taskTitle, stage.title, null),
+          standards,
+        };
+      }),
     })),
   };
 }

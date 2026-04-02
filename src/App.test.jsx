@@ -14,7 +14,7 @@ vi.mock('./data/syllabusData', async () => {
   };
 });
 
-import App from './App';
+import App from './App.jsx';
 
 test('renders loading state then hydrates app data', async () => {
   render(<App />);

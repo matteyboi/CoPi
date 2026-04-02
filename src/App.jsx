@@ -570,14 +570,24 @@ function App() {
 
   const phasesWithProgress = useMemo(
     () =>
-      syllabus.phases.map((phase) => ({
-        ...phase,
-        sessions: phase.sessions.map((session) => ({
+      syllabus.phases.map((phase) => {
+        // Map sessions to include status and rating
+        const sessionsWithStatus = phase.sessions.map((session) => ({
           ...session,
           status: sessionStatuses[session.id] ?? null,
           rating: sessionRatings[session.id] ?? null,
-        })),
-      })),
+        }));
+        // Sort: planned, in-progress, then completed (completed always at the bottom)
+        sessionsWithStatus.sort((a, b) => {
+          const aIdx = statusOrder.indexOf(a.status || 'planned');
+          const bIdx = statusOrder.indexOf(b.status || 'planned');
+          return aIdx - bIdx;
+        });
+        return {
+          ...phase,
+          sessions: sessionsWithStatus,
+        };
+      }),
     [sessionRatings, sessionStatuses, syllabus.phases]
   );
 
@@ -906,10 +916,21 @@ function App() {
     if (!instructorMode) {
       return;
     }
-    setSessionStatuses(sessionDraftStatuses);
-    setSessionRatings(sessionDraftRatings);
-    setPlannedSessionIds(plannedDraftSessionIds);
+    // Clone the draft statuses so we can update them before saving
+    const updatedStatuses = { ...sessionDraftStatuses };
+    // For each session, if it has a 5-star rating, mark as completed (no lesson day required)
+    Object.keys(sessionDraftRatings).forEach((sessionId) => {
+      const rating = sessionDraftRatings[sessionId];
+      if (rating === 5) {
+        updatedStatuses[sessionId] = 'completed';
+      }
+    });
+    setSessionStatuses({ ...updatedStatuses }); // Force new object reference
+    setSessionRatings({ ...sessionDraftRatings });
+    setPlannedSessionIds([...plannedDraftSessionIds]);
     setNoteToastMessage('Syllabus changes saved.');
+    // Force a re-render by updating a dummy state
+    setTimeout(() => setSessionStatuses((s) => ({ ...s })), 0);
   };
 
   const getStoredPinHash = () => window.localStorage.getItem(INSTRUCTOR_PIN_STORAGE_KEY) ?? null;
@@ -2046,7 +2067,7 @@ function App() {
               {phasesWithProgress.map((phase, index) => {
                 const stageState = phaseLockStates[index] ?? { isLocked: false };
                 const isLocked = stageState.isLocked;
-                const isExpanded = Boolean(expandedStageIds[phase.id]) && !isLocked;
+                const isExpanded = Boolean(expandedStageIds[phase.id]);
 
                 return (
                   <article className={`phase-card ${isLocked ? 'is-locked' : ''}`} key={phase.id}>
@@ -2054,13 +2075,11 @@ function App() {
                       type="button"
                       className={`phase-card-header phase-dropdown-button ${isLocked ? 'is-locked' : ''}`}
                       onClick={() => {
-                        if (isLocked) return;
                         setExpandedStageIds((current) => ({
                           ...current,
                           [phase.id]: !current[phase.id],
                         }));
                       }}
-                      disabled={isLocked}
                       aria-expanded={isExpanded}
                     >
                       <div>
@@ -2085,54 +2104,65 @@ function App() {
                     {isExpanded ? (
                       <div className="session-list">
                         {phase.sessions.map((session) => (
-                          <div className="session-row" key={session.id}>
+                          <div className="session-row" key={session.id} style={{ position: 'relative' }}>
                             <div className="session-main">
                               <div className="session-copy">
                                 <div className="session-title-row">
                                   <h3>{session.title}</h3>
                                 </div>
+                                {/* Standards Link Icon (bottom right) */}
+                                {Array.isArray(session.standards) && session.standards.length > 0 && (
+                                  <div
+                                    className="standards-link-stack"
+                                    style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 2, display: 'block', maxWidth: '180px' }}
+                                  >
+                                    <a
+                                      href={session.standards[0].link}
+                                      className="standards-link"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title={`View ${session.standards[0].ref}`}
+                                      style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.82em' }}
+                                    >
+                                      {session.standards[0].ref}
+                                    </a>
+                                  </div>
+                                )}
 
                                 {(() => {
-                                  const savedStatus = session.status;
-                                  const hasDraftStatus = Object.prototype.hasOwnProperty.call(sessionDraftStatuses, session.id);
-                                  const draftStatus = hasDraftStatus ? sessionDraftStatuses[session.id] : savedStatus;
+                                  // Use draft status in instructor mode, saved status otherwise
+                                  // Only highlight as planned if user explicitly selects it
                                   const plannedIsActive = instructorMode
                                     ? plannedDraftSessionIdSet.has(session.id)
                                     : plannedSessionIdSet.has(session.id);
-                                  const effectiveActiveStatus = plannedIsActive ? 'planned' : (instructorMode ? draftStatus : savedStatus);
-
+                                  const highlightStatus = plannedIsActive
+                                    ? 'planned'
+                                    : session.status || null;
                                   return (
                                     <div className="status-actions" aria-label={`Update ${session.title} status`}>
-                                      {statusOrder.map((status) => (
-                                        <button
-                                          key={status}
-                                          type="button"
-                                          className={`status-button status-${status} ${status === effectiveActiveStatus ? 'active' : ''}`}
-                                          onClick={() => {
-                                            if (!instructorMode) {
-                                              return;
-                                            }
-                                            if (status === effectiveActiveStatus) {
+                                      {statusOrder.map((status) => {
+                                        const isDisabled = isInstrumentComingSoon || !instructorMode || highlightStatus === 'completed';
+                                        return (
+                                          <button
+                                            key={status}
+                                            type="button"
+                                            className={`status-button status-${status} ${status === highlightStatus ? 'active' : ''}`}
+                                            onClick={() => {
+                                              if (isDisabled) return;
+                                              if (status === highlightStatus) return;
                                               if (status === 'planned') {
                                                 togglePlannedDraftStatus(session.id);
-                                                return;
+                                              } else {
+                                                clearPlannedDraftStatus(session.id);
+                                                updateSessionStatus(session.id, status);
                                               }
-                                              clearPlannedDraftStatus(session.id);
-                                              clearSessionDraftStatus(session.id);
-                                              return;
-                                            }
-                                            if (status === 'planned') {
-                                              togglePlannedDraftStatus(session.id);
-                                              return;
-                                            }
-                                            clearPlannedDraftStatus(session.id);
-                                            updateSessionStatus(session.id, status);
-                                          }}
-                                          disabled={isInstrumentComingSoon || !instructorMode}
-                                        >
-                                          {statusLabel[status]}
-                                        </button>
-                                      ))}
+                                            }}
+                                            disabled={isDisabled}
+                                          >
+                                            {statusLabel[status]}
+                                          </button>
+                                        );
+                                      })}
                                     </div>
                                   );
                                 })()}
@@ -2466,7 +2496,7 @@ function App() {
                         {day.tasks.map((task, i) => (
                           <div className="history-task-row" key={`${task.sessionId}-${i}`}>
                             <div className="history-task-info">
-                              <span className="history-task-stage">{task.stageTitle}</span>
+                              <span className="history-task-stage burnt-orange-title">{task.stageTitle}</span>
                               <span className="history-task-title">{task.title}</span>
                             </div>
                             <div className="history-task-stars">

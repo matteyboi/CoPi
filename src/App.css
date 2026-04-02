@@ -1,3 +1,59 @@
+/* Burnt orange, bold stage/phase titles */
+.burnt-orange-title {
+  color: #cc5500;
+  font-weight: bold;
+}
+/* Stacked standards links for each session */
+.standards-link-stack {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 2;
+  display: block;
+  max-width: 180px;
+}
+
+.standards-link-stack .standards-link {
+  display: block;
+  text-align: right;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+.standards-link-stack .standards-link:last-child {
+  margin-bottom: 0;
+}
+/* Standards Link Icon */
+.standards-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.08);
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+  font-size: 1.1em;
+  color: #38bdf8;
+  opacity: 0.8;
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  font-size: 0.85em;
+  color: #38bdf8;
+  text-decoration: underline;
+  opacity: 0.7;
+  font-weight: 400;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  transition: opacity 0.2s, color 0.2s;
+}
+.standards-link:hover {
+  background: rgba(56, 189, 248, 0.18);
+  color: #0ea5e9;
+  opacity: 1;
+}
 .App {
   --bottom-nav-offset: 96px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -781,12 +837,14 @@
   cursor: not-allowed;
 }
 
+
+/* Unified tab navigation styles for all browsers */
 .tabs-nav-bottom {
   display: flex;
   gap: 10px;
   justify-content: center;
   align-items: center;
-  padding: 24px 20px calc(24px + var(--safe-bottom));
+  padding: 18px 16px calc(18px + var(--safe-bottom));
   margin-top: 0;
   position: fixed;
   left: 0;
@@ -805,15 +863,17 @@
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 999px;
   color: #94a3b8;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tab-bubble:hover {
-  flex: 1 1 0;
-  min-width: 0;
   background: rgba(148, 163, 184, 0.15);
   border-color: rgba(148, 163, 184, 0.3);
   color: #cbd5e1;
@@ -821,10 +881,6 @@
 
 .tab-bubble.active {
   background: rgba(125, 211, 252, 0.15);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   border-color: #7dd3fc;
   color: #7dd3fc;
 }
@@ -898,11 +954,6 @@
 .log-day-trigger:hover {
   background: rgba(56, 189, 248, 0.2);
   border-color: #7dd3fc;
-}
-
-.log-day-actions {
-  display: flex;
-  gap: 8px;
 }
 
 .log-day-cancel {
@@ -1147,9 +1198,10 @@
 
 .history-task-stage {
   font-size: 0.68rem;
-  color: #475569;
+  color: #cc5500;
   text-transform: uppercase;
   letter-spacing: 0.07em;
+  font-weight: bold;
 }
 
 .history-task-title {
@@ -2261,8 +2313,10 @@
 }
 
 .phase-title {
-  margin: 0;
-  font-size: 1.2rem;
+  margin: 0 !important;
+  font-size: 1.2rem !important;
+  color: #cc5500 !important;
+  font-weight: bold !important;
 }
 
 .phase-description {
@@ -2912,12 +2966,11 @@
   }
 
   .tab-bubble {
-    padding: 8px 9px;
-    font-size: 0.76rem;
+    padding: 8px 14px;
+    font-size: 0.85rem;
   }
-
   .tab-bubble.copi-tab {
-    font-size: 0.84rem;
+    font-size: 0.92rem;
   }
 
   .chat-history-bar {
@@ -2997,12 +3050,11 @@
   }
 
   .tab-bubble {
-    padding: 6px 8px;
-    font-size: 0.75rem;
+    padding: 5px 10px;
+    font-size: 0.78rem;
   }
-
   .tab-bubble.copi-tab {
-    font-size: 0.81rem;
+    font-size: 0.85rem;
   }
 
   /* History bar super-compact */
@@ -3208,12 +3260,12 @@
 .in-progress-rating-stars {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 10px;
   width: 100%;
   margin-top: 34px;
   margin-bottom: 14px;
-  transform: translateX(120px);
+  margin-left: 40%;
 }
 
 .in-progress-rating-stars .log-star {
