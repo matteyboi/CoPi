@@ -253,8 +253,7 @@ function App() {
       return JSON.parse(window.localStorage.getItem(LESSON_DAYS_STORAGE_KEY) ?? '[]');
     } catch { return []; }
   });
-  const [logDayOpen, setLogDayOpen] = useState(false);
-  const [logDayTasks, setLogDayTasks] = useState({});
+  // ...existing code...
   const [logDayNote, setLogDayNote] = useState('');
   const [expandedHistoryId, setExpandedHistoryId] = useState(null);
   const [instructorMode, setInstructorMode] = useState(false);
@@ -987,69 +986,7 @@ function App() {
     setMenuOpen(false);
   };
 
-  const openLogDay = () => {
-    const initial = {};
-    allSessions.forEach((s) => {
-      initial[s.id] = {
-        title: s.title,
-        stageTitle: s.stageTitle,
-        included: s.status === 'in-progress',
-        rating: null,
-      };
-    });
-    setLogDayTasks(initial);
-    setLogDayNote('');
-    setLogDayOpen(true);
-  };
-
-  const cancelLogDay = () => {
-    setLogDayOpen(false);
-    setLogDayTasks({});
-    setLogDayNote('');
-  };
-
-  const toggleLogTask = (sessionId) => {
-    setLogDayTasks((current) => ({
-      ...current,
-      [sessionId]: { ...current[sessionId], included: !current[sessionId].included },
-    }));
-  };
-
-  const setLogTaskRating = (sessionId, rating) => {
-    if (!instructorMode) {
-      return;
-    }
-    setLogDayTasks((current) => ({
-      ...current,
-      [sessionId]: { ...current[sessionId], rating },
-    }));
-  };
-
-  const saveLessonDay = () => {
-    const includedTasks = Object.entries(logDayTasks)
-      .filter(([, t]) => t.included)
-      .map(([sessionId, t]) => ({
-        sessionId,
-        title: t.title,
-        stageTitle: t.stageTitle,
-        rating: t.rating,
-      }));
-    if (!includedTasks.length) {
-      cancelLogDay();
-      return;
-    }
-    const entry = {
-      id: `day-${Date.now()}`,
-      date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-      savedAt: new Date().toISOString(),
-      tasks: includedTasks,
-      note: logDayNote.trim(),
-    };
-    const allUpdatedDays = [entry, ...lessonDays];
-    setLessonDays(allUpdatedDays);
-    generateBriefing(allUpdatedDays);
-    cancelLogDay();
-  };
+  // ...existing code...
 
   const updateSessionNote = (sessionId, note) => {
     setSessionNotes((currentNotes) => ({
@@ -2015,75 +1952,9 @@ function App() {
                 <p className="planned-lessons-empty">No planned lessons saved yet.</p>
               )}
             </section>
+            {/* Log Lesson Day UI removed as requested */}
 
-            <div className="log-day-header">
-              <span className="log-day-date">
-                {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </span>
-              {!logDayOpen ? (
-                <button type="button" className="log-day-trigger" onClick={openLogDay}>
-                  + Log Lesson Day
-                </button>
-              ) : (
-                <div className="log-day-actions">
-                  <button type="button" className="log-day-cancel" onClick={cancelLogDay}>Cancel</button>
-                  <button type="button" className="log-day-save" onClick={saveLessonDay}>Save Day</button>
-                </div>
-              )}
-            </div>
-
-            {logDayOpen && (
-              <div className="log-day-form">
-                {phasesWithProgress.map((phase) => (
-                  <div className="log-day-phase" key={phase.id}>
-                    <p className="log-day-phase-title">{phase.title}</p>
-                    {phase.sessions.map((session) => {
-                      const task = logDayTasks[session.id];
-                      if (!task) return null;
-                      return (
-                        <div key={session.id} className={`log-day-row${task.included ? ' is-included' : ''}`}>
-                          <label className="log-day-check-label">
-                            <input
-                              type="checkbox"
-                              checked={task.included}
-                              onChange={() => toggleLogTask(session.id)}
-                            />
-                            <span className="log-day-session-name">{session.title}</span>
-                          </label>
-                          {task.included && instructorMode && (
-                            <div className="log-day-stars" aria-label={`Rating for ${session.title}`}>
-                              {[1, 2, 3, 4, 5].map((star) => (
-                                <button
-                                  key={star}
-                                  type="button"
-                                  className={`log-star${task.rating >= star ? ' active' : ''}`}
-                                  onClick={() => setLogTaskRating(session.id, star)}
-                                  aria-label={`${star} star`}
-                                >★</button>
-                              ))}
-                            </div>
-                          )}
-                          {task.included && !instructorMode && (
-                            <span className="log-day-pending-rating">Pending rating</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-                <div className="log-day-note-row">
-                  <textarea
-                    className="log-day-note"
-                    placeholder="Add a note about today's lesson…"
-                    value={logDayNote}
-                    onChange={(e) => setLogDayNote(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-              </div>
-            )}
-
-            {!logDayOpen && (hasBriefingInput || briefingLoading || dashboardBriefing) && (
+            {(hasBriefingInput || briefingLoading || dashboardBriefing) && (
               <div className="briefing-section">
                 {briefingLoading ? (
                   <div className="briefing-loading">
