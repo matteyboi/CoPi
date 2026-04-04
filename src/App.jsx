@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import copiLogo from './7F5D28DA-9DA4-47A8-83DA-F88671CB6067-removebg-preview.png';
-import logoAI from './logoAI.png';
+import logoAI from './Matched_Design_Style_2-removebg-preview.png';
 import { initializeData, oralSessions as defaultOralSessions, progressHistory as defaultProgressHistory, syllabus as defaultSyllabus } from './data/syllabusData';
 
 const STORAGE_KEY = 'ai-flight-syllabus-progress-v1';
@@ -2153,23 +2153,28 @@ function App() {
                                   <h3>{session.title}</h3>
                                 </div>
                                 {/* Standards Link Icon (bottom right) */}
-                                {Array.isArray(session.standards) && session.standards.length > 0 && (
-                                  <div
-                                    className="standards-link-stack"
-                                    style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 2, display: 'block', maxWidth: '180px' }}
-                                  >
-                                    <a
-                                      href={session.standards[0].link}
-                                      className="standards-link"
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      title={`View ${session.standards[0].ref}`}
-                                      style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.82em' }}
+                                {Array.isArray(session.standards) && session.standards.length > 0 && (() => {
+                                  // Prefer AC link if present, otherwise first
+                                  const ac = session.standards.find(std => std.ref.startsWith('AC'));
+                                  const std = ac || session.standards[0];
+                                  return (
+                                    <div
+                                      className="standards-link-stack"
+                                      style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 2, display: 'block', maxWidth: '220px' }}
                                     >
-                                      {session.standards[0].ref}
-                                    </a>
-                                  </div>
-                                )}
+                                      <a
+                                        href={std.link}
+                                        className={`standards-link${std.ref.startsWith('AC') ? ' ac-link' : ''}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title={`View ${std.ref}`}
+                                        style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.82em', fontWeight: std.ref.startsWith('AC') ? 'bold' : 'normal', color: std.ref.startsWith('AC') ? '#f59e42' : undefined }}
+                                      >
+                                        {std.ref}
+                                      </a>
+                                    </div>
+                                  );
+                                })()}
 
                                 {(() => {
                                   // Use draft status in instructor mode, saved status otherwise

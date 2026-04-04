@@ -4,83 +4,69 @@ let cachedData = null;
 
 const CANONICAL_STAGES = [
   {
-    title: 'Stage 1 — Very Early (First ~5–10 Hours)',
+    title: 'Phase 1 — Beginner: Foundations & Preflight',
     tasks: [
-      'Taxiing Using Rudder Pedals',
-      'Normal Takeoff Procedure',
-      'Rotation & Initial Climb',
-      'Straight & Level Flight (Altitude, Heading Hold)',
-      'Vy/Vx Climb Performance',
-      'Taxi Clearance Request',
-      'Turns to Headings (Standard Rate)',
-      'Climbing & Descending Turns',
-      'Traffic Pattern Entry & Position Reports',
-      'Normal Landing Procedure',
-      'Full Stop Landings',
-      'Go-Around/Missed Approach Procedures',
-      'Touch-and-Go Landings',
-      'Use of Flaps for Landing',
+      'Pilot Qualifications',
+      'Airworthiness Requirements',
+      'Human Factors',
+      'Operation of Systems',
+      'Preflight Assessment',
+      'Flight Deck Management',
+      'Engine Starting',
+      'Taxiing (ASEL, AMEL)',
+      'Before Takeoff Check',
+      'Communications, Light Signals, and Runway Lighting Systems',
+      'National Airspace System',
     ],
   },
   {
-    title: 'Stage 2 — Early Training (Pre-Solo Skill Building)',
+    title: 'Phase 2 — Basic Maneuvers & Pattern',
     tasks: [
-      'Crosswind Takeoff Technique',
-      'Crosswind Landing Technique',
-      'Slow Flight (Configuration, Control)',
-      'Power-Off Stalls (Approach to Landing Stall)',
-      'Power-On Stalls (Takeoff/Departure Stall)',
-      'Rectangular Course',
-      'Turns Around a Point',
-      'S-Turns Across a Road',
-      'Basic Instrument Maneuvers (Straight & Level, Turns, Climbs, Descents)',
-      'Use of Backup Instruments',
-      'Engine Failure During Takeoff Roll',
-      'Engine Failure After Takeoff',
-      'Engine Failure in Flight (ABC: Airspeed, Best Field, Checklist)',
-      'Forced Landing (Field Selection, Approach, Landing)',
+      'Traffic Patterns',
+      'Normal Takeoff and Climb',
+      'Normal Approach and Landing',
+      'Steep Turns',
+      'Ground Reference Maneuvers',
+      'Maneuvering During Slow Flight',
+      'Power-Off Stalls',
+      'Power-On Stalls',
+      'Spin Awareness',
+      'Forward Slip to a Landing',
+      'Go-Around/Rejected Landing',
     ],
   },
   {
-    title: 'Stage 3 — Solo Readiness / Early Solo Phase',
+    title: 'Phase 3 — Solo Prep & Emergencies',
     tasks: [
-      'Solo Takeoffs & Landings',
-      'Solo Traffic Pattern Operations',
-      'Short Field Takeoff Technique',
-      'Short Field Landing Technique',
-      'Soft Field Takeoff Technique',
-      'Soft Field Landing Technique',
-      'Forward Slip to Landing',
+      'Soft-Field Takeoff and Climb',
+      'Soft-Field Approach and Landing',
+      'Short-Field Takeoff and Maximum Performance Climb',
+      'Short-Field Approach and Landing',
       'Emergency Descent',
-      'Recovery from Unusual Attitudes',
-      'Electrical Failure (Alternator/Generator Out)',
-      'Fire (Engine, Cabin, Electrical)',
+      'Emergency Approach and Landing',
+      'Systems and Equipment Malfunctions',
+      'Emergency Equipment and Survival Gear',
+      'After Landing, Parking, and Securing',
     ],
   },
   {
-    title: 'Stage 4 — Cross Country Phase',
+    title: 'Phase 4 — Cross-Country & Navigation',
     tasks: [
-      'Sectional Chart Reading',
-      'Use of Electronic Flight Bag (ForeFlight, Garmin Pilot)',
-      'Pilotage (Visual Reference Points)',
-      'Dead Reckoning Navigation',
-      'GPS Navigation (Direct-To, Flight Plan, Waypoints)',
-      'VOR Navigation (Tune, Identify, Track Radials)',
-      'Radio Navigation (VOR, ILS, GPS, DME, ADF)',
-      'Diversion to Alternate Airport',
-      'Cross Country Flight Execution',
-      'Solo Cross Country Planning & Execution',
+      'Weather Information',
+      'Performance and Limitations',
+      'Cross-Country Flight Planning',
+      'Pilotage and Dead Reckoning',
+      'Navigation Systems and Radar Services',
+      'Diversion',
+      'Lost Procedures',
+      'Basic Instrument Maneuvers',
     ],
   },
   {
-    title: 'Stage 5 — Advanced / Night / Checkride Prep',
+    title: 'Phase 5 — Advanced, Night, & Checkride Prep',
     tasks: [
-      'Night Taxi Procedures',
-      'Night Takeoff & Landing',
-      'Night Traffic Pattern Operations',
-      'Night Navigation (Visual, Electronic)',
-      'Solo Night Flight',
-      'Solo Emergency Procedures',
+      'Night Operations',
+      'Checkride Preparation (Comprehensive Review of All Tasks)',
     ],
   },
 ];
@@ -158,7 +144,7 @@ function transformSyllabus() {
               {ref: 'AFH Ch. 5', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
             ],
             [
-              {ref: 'AC 61-65H', link: 'https://www.faa.gov/regulations_policies/advisory_circulars/index.cfm/go/document.information/documentID/1020027'},
+              {ref: 'AC 61-65J', link: 'https://www.faa.gov/regulations_policies/advisory_circulars/index.cfm/go/document.information/documentID/1044436'},
               {ref: 'AFH Ch. 3', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook/media/airplane_handbook.pdf'}
             ],
             [
@@ -314,10 +300,68 @@ function transformSyllabus() {
           ];
           standards = links[lessonIndex] || [];
         }
+        // Always include AC 61-65J as a standard for every task
+        // Map AC 61-65J links to the most relevant section for each maneuver
+        const ac61_65j_base = 'https://www.faa.gov/regulations_policies/advisory_circulars/index.cfm/go/document.information/documentID/1044436';
+        // Mapping of maneuver keywords to AC 61-65J anchors or page references
+        const ac61_65j_links = {
+          'Pilot Qualifications': ac61_65j_base + '#page=7',
+          'Airworthiness Requirements': ac61_65j_base + '#page=10',
+          'Weather Information': ac61_65j_base + '#page=13',
+          'Cross-Country Flight Planning': ac61_65j_base + '#page=15',
+          'National Airspace System': ac61_65j_base + '#page=18',
+          'Performance and Limitations': ac61_65j_base + '#page=20',
+          'Operation of Systems': ac61_65j_base + '#page=22',
+          'Human Factors': ac61_65j_base + '#page=24',
+          'Preflight Assessment': ac61_65j_base + '#page=26',
+          'Flight Deck Management': ac61_65j_base + '#page=28',
+          'Engine Starting': ac61_65j_base + '#page=30',
+          'Taxiing': ac61_65j_base + '#page=32',
+          'Taxiing (ASEL, AMEL)': ac61_65j_base + '#page=32',
+          'Before Takeoff Check': ac61_65j_base + '#page=34',
+          'Communications, Light Signals, and Runway Lighting Systems': ac61_65j_base + '#page=36',
+          'Traffic Patterns': ac61_65j_base + '#page=38',
+          'Normal Takeoff and Climb': ac61_65j_base + '#page=40',
+          'Normal Approach and Landing': ac61_65j_base + '#page=42',
+          'Soft-Field Takeoff and Climb': ac61_65j_base + '#page=44',
+          'Soft-Field Approach and Landing': ac61_65j_base + '#page=46',
+          'Short-Field Takeoff and Maximum Performance Climb': ac61_65j_base + '#page=48',
+          'Short-Field Approach and Landing': ac61_65j_base + '#page=50',
+          'Steep Turns': ac61_65j_base + '#page=52',
+          'Ground Reference Maneuvers': ac61_65j_base + '#page=54',
+          'Maneuvering During Slow Flight': ac61_65j_base + '#page=56',
+          'Power-Off Stalls': ac61_65j_base + '#page=58',
+          'Power-On Stalls': ac61_65j_base + '#page=60',
+          'Spin Awareness': ac61_65j_base + '#page=62',
+          'Forward Slip to a Landing': ac61_65j_base + '#page=64',
+          'Go-Around/Rejected Landing': ac61_65j_base + '#page=66',
+          'Emergency Descent': ac61_65j_base + '#page=68',
+          'Emergency Approach and Landing': ac61_65j_base + '#page=70',
+          'Systems and Equipment Malfunctions': ac61_65j_base + '#page=72',
+          'Emergency Equipment and Survival Gear': ac61_65j_base + '#page=74',
+          'After Landing, Parking, and Securing': ac61_65j_base + '#page=76',
+          'Weather Information': ac61_65j_base + '#page=13',
+          'Pilotage and Dead Reckoning': ac61_65j_base + '#page=78',
+          'Navigation Systems and Radar Services': ac61_65j_base + '#page=80',
+          'Diversion': ac61_65j_base + '#page=82',
+          'Lost Procedures': ac61_65j_base + '#page=84',
+          'Basic Instrument Maneuvers': ac61_65j_base + '#page=86',
+          'Night Operations': ac61_65j_base + '#page=88',
+          'Checkride Preparation (Comprehensive Review of All Tasks)': ac61_65j_base,
+        };
+        // Find the best match for the lesson/task title
+        let ac6165j = {ref: 'AC 61-65J', link: ac61_65j_base};
+        for (const key in ac61_65j_links) {
+          if (taskTitle && taskTitle.toLowerCase().includes(key.toLowerCase().replace(/\(.+\)/,''))) {
+            ac6165j = {ref: 'AC 61-65J', link: ac61_65j_links[key]};
+            break;
+          }
+        }
+        if (!standards.some(s => s.ref === 'AC 61-65J')) {
+          standards = [ac6165j, ...standards];
+        }
         if (!standards.length) {
-          standards = [
-            {ref: 'FAA Handbooks', link: 'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/'}
-          ];
+          standards = [ac6165j];
         }
         return {
           id: `s${stageIndex + 1}-${lessonIndex + 1}`,

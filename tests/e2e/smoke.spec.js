@@ -7,7 +7,9 @@ test('homepage loads and exits loading state', async ({ page }) => {
   await expect(loadingText).toBeVisible();
   await expect(loadingText).toBeHidden({ timeout: 15000 });
 
-  await expect(page.getByAltText('CoPi')).toBeVisible();
+  // Only match the hero logo, not the tab logo
+  const heroLogo = page.locator('img.hero-logo[alt="CoPi"]');
+  await expect(heroLogo).toBeVisible();
   await expect(page.getByText('Your flight training companion')).toBeVisible();
 });
 
