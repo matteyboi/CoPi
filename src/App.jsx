@@ -2129,32 +2129,57 @@ function App() {
 
             <div className="phase-grid">
               {phasesWithProgress.map((phase, index) => {
-                // Render Stage 6 as a plain list, no bubbles or actions
+                // Make Stage 6 collapsible with its unique checklist UI
                 if (phase.title && phase.title.startsWith('Stage 6')) {
+                  const stageState = phaseLockStates[index] ?? { isLocked: false };
+                  const isLocked = stageState.isLocked;
+                  const isExpanded = Boolean(expandedStageIds[phase.id]);
                   return (
-                    <article className="phase-card" key={phase.id}>
-                      <div className="phase-card-header">
-                        <p className="phase-title">{phase.title}</p>
-                      </div>
-                      <div className="stage6-prompt" style={{marginBottom: '12px', color: '#f59e42', fontWeight: 500}}>
-                        Review each flight task below before your checkride. Make sure you can confidently brief, fly, and debrief every maneuver!
-                      </div>
-                      <ul className="plain-review-list">
-                        {phase.sessions.map((session) => (
-                          session.title && session.title.trim() !== '' ? (
-                            <li key={session.id} style={{display:'flex',alignItems:'center',gap:'10px'}}>
-                              <input
-                                type="checkbox"
-                                checked={!!stage6Checked[session.id]}
-                                onChange={() => handleStage6Check(session.id)}
-                                style={{width:'18px',height:'18px',accentColor:'#38bdf8',cursor:'pointer'}}
-                                aria-label={`Mark ${session.title} reviewed`}
-                              />
-                              <span>{session.title}</span>
-                            </li>
-                          ) : null
-                        ))}
-                      </ul>
+                    <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
+                      <button
+                        type="button"
+                        className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}`}
+                        onClick={() => {
+                          setExpandedStageIds((current) => ({
+                            ...current,
+                            [phase.id]: !current[phase.id],
+                          }));
+                        }}
+                        aria-expanded={isExpanded}
+                      >
+                        <div>
+                          <p className="phase-title">{phase.title}</p>
+                          {isLocked ? (
+                            <p className="phase-locked-note">Complete all previous stages to unlock.</p>
+                          ) : null}
+                        </div>
+                        <span className="phase-dropdown-caret">{isExpanded ? '▾' : '▸'}</span>
+                      </button>
+                      {isExpanded && (
+                        <div className={`phase-content${isLocked ? ' phase-content-locked' : ''}`}
+                          style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
+                          <div className="stage6-prompt" style={{marginBottom: '12px', color: '#f59e42', fontWeight: 500}}>
+                            Review each flight task below before your checkride. Make sure you can confidently brief, fly, and debrief every maneuver!
+                          </div>
+                          <ul className="plain-review-list">
+                            {phase.sessions.map((session) => (
+                              session.title && session.title.trim() !== '' ? (
+                                <li key={session.id} style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!stage6Checked[session.id]}
+                                    onChange={() => handleStage6Check(session.id)}
+                                    style={{width:'18px',height:'18px',accentColor:'#38bdf8',cursor:'pointer'}}
+                                    aria-label={`Mark ${session.title} reviewed`}
+                                    disabled={isLocked}
+                                  />
+                                  <span>{session.title}</span>
+                                </li>
+                              ) : null
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </article>
                   );
                 }
@@ -2166,10 +2191,10 @@ function App() {
                   (session) => session && session.title && session.title.trim() !== ''
                 );
                 return (
-                  <article className={`phase-card ${isLocked ? 'is-locked' : ''}`} key={phase.id}>
+                  <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
                     <button
                       type="button"
-                      className={`phase-card-header phase-dropdown-button ${isLocked ? 'is-locked' : ''}`}
+                      className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}`}
                       onClick={() => {
                         setExpandedStageIds((current) => ({
                           ...current,
@@ -2185,7 +2210,7 @@ function App() {
                       <span className="phase-dropdown-caret">{isExpanded ? '▾' : '▸'}</span>
                     </button>
                     {isExpanded && phase.dpeGuidance ? (
-                      <section className="phase-guidance">
+                      <section className="phase-guidance phase-content-locked" style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
                         <p className="phase-guidance-title">DPE & FAA focus</p>
                         <ul className="phase-guidance-list">
                           {phase.dpeGuidance.focus?.map((item) => (
@@ -2196,7 +2221,8 @@ function App() {
                       </section>
                     ) : null}
                     {isExpanded ? (
-                      <div className="session-list">
+                      <div className={`session-list${isLocked ? ' phase-content-locked' : ''}`}
+                        style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
                         {nonBlankSessions.map((session) => (
                           <div className="session-row" key={session.id} style={{ position: 'relative' }}>
                             <div className="session-main">
@@ -2244,7 +2270,7 @@ function App() {
                                   return (
                                     <div className="status-actions" aria-label={`Update ${session.title} status`}>
                                       {statusOrder.map((status) => {
-                                        const isDisabled = isInstrumentComingSoon || !instructorMode;
+                                        const isDisabled = isInstrumentComingSoon || !instructorMode || isLocked;
                                         return (
                                           <button
                                             key={status}
@@ -2300,7 +2326,7 @@ function App() {
                                           type="button"
                                           className={`log-star${currentRating >= star ? ' active' : ''}`}
                                           onClick={() => setSessionDraftRating(session.id, star)}
-                                          disabled={!instructorMode || isInstrumentComingSoon}
+                                          disabled={!instructorMode || isInstrumentComingSoon || isLocked}
                                           aria-label={`${star} star`}
                                         >★</button>
                                       ))}
