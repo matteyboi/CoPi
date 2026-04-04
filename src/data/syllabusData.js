@@ -2,21 +2,28 @@ import { loadAllData } from '../utils/dataLoader';
 
 let cachedData = null;
 
+// Save oral/ground/knowledge tasks for future use
+export const ORAL_KNOWLEDGE_TASKS = [
+  'Pilot Qualifications',
+  'Airworthiness Requirements',
+  'Human Factors',
+  'Operation of Systems',
+  'Preflight Assessment',
+  'Flight Deck Management',
+  'Before Takeoff Check',
+  'Communications, Light Signals, and Runway Lighting Systems',
+  'National Airspace System',
+  'Weather Information',
+  'Performance and Limitations',
+  'Cross-Country Flight Planning',
+];
+
 const CANONICAL_STAGES = [
   {
     title: 'Phase 1 — Beginner: Foundations & Preflight',
     tasks: [
-      'Pilot Qualifications',
-      'Airworthiness Requirements',
-      'Human Factors',
-      'Operation of Systems',
-      'Preflight Assessment',
-      'Flight Deck Management',
       'Engine Starting',
       'Taxiing (ASEL, AMEL)',
-      'Before Takeoff Check',
-      'Communications, Light Signals, and Runway Lighting Systems',
-      'National Airspace System',
     ],
   },
   {
@@ -52,9 +59,6 @@ const CANONICAL_STAGES = [
   {
     title: 'Phase 4 — Cross-Country & Navigation',
     tasks: [
-      'Weather Information',
-      'Performance and Limitations',
-      'Cross-Country Flight Planning',
       'Pilotage and Dead Reckoning',
       'Navigation Systems and Radar Services',
       'Diversion',
@@ -67,6 +71,40 @@ const CANONICAL_STAGES = [
     tasks: [
       'Night Operations',
       'Checkride Preparation (Comprehensive Review of All Tasks)',
+    ],
+  },
+  {
+    title: 'Stage 6 — Comprehensive Flight Review',
+    tasks: [
+      // All flight tasks from previous stages
+      'Engine Starting',
+      'Taxiing (ASEL, AMEL)',
+      'Traffic Patterns',
+      'Normal Takeoff and Climb',
+      'Normal Approach and Landing',
+      'Steep Turns',
+      'Ground Reference Maneuvers',
+      'Maneuvering During Slow Flight',
+      'Power-Off Stalls',
+      'Power-On Stalls',
+      'Spin Awareness',
+      'Forward Slip to a Landing',
+      'Go-Around/Rejected Landing',
+      'Soft-Field Takeoff and Climb',
+      'Soft-Field Approach and Landing',
+      'Short-Field Takeoff and Maximum Performance Climb',
+      'Short-Field Approach and Landing',
+      'Emergency Descent',
+      'Emergency Approach and Landing',
+      'Systems and Equipment Malfunctions',
+      'Emergency Equipment and Survival Gear',
+      'After Landing, Parking, and Securing',
+      'Pilotage and Dead Reckoning',
+      'Navigation Systems and Radar Services',
+      'Diversion',
+      'Lost Procedures',
+      'Basic Instrument Maneuvers',
+      'Night Operations',
     ],
   },
 ];

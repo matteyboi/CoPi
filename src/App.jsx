@@ -92,6 +92,28 @@ const buildFallbackThreadTitle = (messages) => {
 };
 
 function App() {
+    // Stage 6 checkboxes state (must be outside map)
+    const [stage6Checked, setStage6Checked] = React.useState(() => {
+      if (typeof window !== 'undefined') {
+        try {
+          const saved = window.localStorage.getItem('stage6-checks');
+          return saved ? JSON.parse(saved) : {};
+        } catch {
+          return {};
+        }
+      }
+      return {};
+    });
+
+    const handleStage6Check = (id) => {
+      setStage6Checked((prev) => {
+        const next = { ...prev, [id]: !prev[id] };
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('stage6-checks', JSON.stringify(next));
+        }
+        return next;
+      });
+    };
   const [dataLoading, setDataLoading] = useState(true);
   const [syllabus, setSyllabus] = useState(defaultSyllabus);
   const [activeStudentName, setActiveStudentName] = useState(() => {
@@ -2087,7 +2109,7 @@ function App() {
         )}
 
         {activeTab === 'syllabus' && (
-          <section className="tab-content">
+          <section className="tab-content syllabus-bottom-spacing">
             {isInstrumentComingSoon ? (
               <div className="coming-soon-banner">Instrument training tools are coming soon. Syllabus editing is temporarily disabled.</div>
             ) : null}
@@ -2107,10 +2129,42 @@ function App() {
 
             <div className="phase-grid">
               {phasesWithProgress.map((phase, index) => {
+                // Render Stage 6 as a plain list, no bubbles or actions
+                if (phase.title && phase.title.startsWith('Stage 6')) {
+                  return (
+                    <article className="phase-card" key={phase.id}>
+                      <div className="phase-card-header">
+                        <p className="phase-title">{phase.title}</p>
+                      </div>
+                      <div className="stage6-prompt" style={{marginBottom: '12px', color: '#f59e42', fontWeight: 500}}>
+                        Review each flight task below before your checkride. Make sure you can confidently brief, fly, and debrief every maneuver!
+                      </div>
+                      <ul className="plain-review-list">
+                        {phase.sessions.map((session) => (
+                          session.title && session.title.trim() !== '' ? (
+                            <li key={session.id} style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                              <input
+                                type="checkbox"
+                                checked={!!stage6Checked[session.id]}
+                                onChange={() => handleStage6Check(session.id)}
+                                style={{width:'18px',height:'18px',accentColor:'#38bdf8',cursor:'pointer'}}
+                                aria-label={`Mark ${session.title} reviewed`}
+                              />
+                              <span>{session.title}</span>
+                            </li>
+                          ) : null
+                        ))}
+                      </ul>
+                    </article>
+                  );
+                }
+                // ...existing code for other phases...
                 const stageState = phaseLockStates[index] ?? { isLocked: false };
                 const isLocked = stageState.isLocked;
                 const isExpanded = Boolean(expandedStageIds[phase.id]);
-
+                const nonBlankSessions = phase.sessions.filter(
+                  (session) => session && session.title && session.title.trim() !== ''
+                );
                 return (
                   <article className={`phase-card ${isLocked ? 'is-locked' : ''}`} key={phase.id}>
                     <button
@@ -2130,7 +2184,6 @@ function App() {
                       </div>
                       <span className="phase-dropdown-caret">{isExpanded ? '▾' : '▸'}</span>
                     </button>
-
                     {isExpanded && phase.dpeGuidance ? (
                       <section className="phase-guidance">
                         <p className="phase-guidance-title">DPE & FAA focus</p>
@@ -2142,10 +2195,9 @@ function App() {
                         <p className="phase-guidance-ref">{phase.dpeGuidance.acsReference}</p>
                       </section>
                     ) : null}
-
                     {isExpanded ? (
                       <div className="session-list">
-                        {phase.sessions.map((session) => (
+                        {nonBlankSessions.map((session) => (
                           <div className="session-row" key={session.id} style={{ position: 'relative' }}>
                             <div className="session-main">
                               <div className="session-copy">
@@ -2175,7 +2227,6 @@ function App() {
                                     </div>
                                   );
                                 })()}
-
                                 {(() => {
                                   // Use draft status in instructor mode, saved status otherwise
                                   // Only highlight as planned if user explicitly selects it
@@ -2227,7 +2278,6 @@ function App() {
                                     </div>
                                   );
                                 })()}
-
                                 {(() => {
                                   const savedStatus = session.status;
                                   const hasDraftStatus = Object.prototype.hasOwnProperty.call(sessionDraftStatuses, session.id);
@@ -2236,15 +2286,12 @@ function App() {
                                     ? plannedDraftSessionIdSet.has(session.id)
                                     : plannedSessionIdSet.has(session.id);
                                   const effectiveActiveStatus = plannedIsActive ? 'planned' : (instructorMode ? draftStatus : savedStatus);
-
                                   if (effectiveActiveStatus !== 'in-progress') {
                                     return null;
                                   }
-
                                   const currentRating = instructorMode
                                     ? (sessionDraftRatings[session.id] ?? 0)
                                     : (sessionRatings[session.id] ?? 0);
-
                                   return (
                                     <div className="in-progress-rating-stars" aria-label={`Rating for ${session.title}`}>
                                       {[1, 2, 3, 4, 5].map((star) => (
