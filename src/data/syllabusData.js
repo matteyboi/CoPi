@@ -20,15 +20,14 @@ export const ORAL_KNOWLEDGE_TASKS = [
 
 const CANONICAL_STAGES = [
   {
-    title: 'Phase 1 — Beginner: Foundations & Preflight',
+    title: 'Phase 1 — Beginner: Foundations, Preflight & Basic Maneuvers',
     tasks: [
+      // Inserted checklist items just above Engine Starting
+      '[CHECKLIST] Medical',
+      '[CHECKLIST] TSA Endorsement',
+      '[CHECKLIST] IACRA',
       'Engine Starting',
       'Taxiing (ASEL, AMEL)',
-    ],
-  },
-  {
-    title: 'Phase 2 — Basic Maneuvers & Pattern',
-    tasks: [
       'Traffic Patterns',
       'Normal Takeoff and Climb',
       'Normal Approach and Landing',
@@ -43,7 +42,7 @@ const CANONICAL_STAGES = [
     ],
   },
   {
-    title: 'Phase 3 — Solo Prep & Emergencies',
+    title: 'Phase 2 — Solo Prep & Emergencies',
     tasks: [
       'Soft-Field Takeoff and Climb',
       'Soft-Field Approach and Landing',
@@ -57,7 +56,7 @@ const CANONICAL_STAGES = [
     ],
   },
   {
-    title: 'Phase 4 — Cross-Country & Navigation',
+    title: 'Phase 3 — Cross-Country & Navigation',
     tasks: [
       'Pilotage and Dead Reckoning',
       'Navigation Systems and Radar Services',
@@ -67,14 +66,14 @@ const CANONICAL_STAGES = [
     ],
   },
   {
-    title: 'Phase 5 — Advanced, Night, & Checkride Prep',
+    title: 'Phase 4 — Advanced, Night, & Checkride Prep',
     tasks: [
       'Night Operations',
       'Checkride Preparation (Comprehensive Review of All Tasks)',
     ],
   },
   {
-    title: 'Stage 6 — Comprehensive Flight Review',
+    title: 'Stage 5 — Comprehensive Flight Review',
     tasks: [
       // All flight tasks from previous stages
       'Engine Starting',

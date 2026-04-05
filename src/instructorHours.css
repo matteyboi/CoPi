@@ -1,0 +1,125 @@
+.hours-bubble .instructor-hours-input {
+  color: #cc5500;
+}
+/* Smaller hours input bubble override */
+.hours-bubble .instructor-hours-input {
+  background: #334155;
+  text-align: center;
+  border: none;
+  color: #e0f2fe;
+  font-weight: 600;
+  width: 43px;
+  box-shadow: none;
+  padding: 4px 0;
+  font-size: 0.86em;
+  outline: none;
+}
+.hours-bubble .instructor-hours-input::-webkit-input-placeholder {
+  text-align: center;
+}
+.hours-bubble .instructor-hours-input:-moz-placeholder {
+  text-align: center;
+}
+.hours-bubble .instructor-hours-input::-moz-placeholder {
+  text-align: center;
+}
+.hours-bubble .instructor-hours-input:-ms-input-placeholder {
+  text-align: center;
+}
+
+.hours-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(14, 116, 144, 0.2);
+  border-radius: 999px;
+  padding: 4px 8px 4px 8px;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  box-shadow: 0 2px 8px rgba(2, 6, 23, 0.06);
+}
+
+.hours-bubble-label {
+  color: #e0f2fe;
+  font-size: 1em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-right: 2px;
+}
+
+.hours-bubble .instructor-hours-input::placeholder {
+  color: #e0f2fe;
+  opacity: 0.7;
+}
+
+.hours-bubble .instructor-hours-input {
+  background: #334155;
+  text-align: center;
+}
+
+.hours-bubble .instructor-hours-input::-webkit-input-placeholder {
+  text-align: center;
+}
+.hours-bubble .instructor-hours-input:-moz-placeholder {
+  text-align: center;
+}
+.hours-bubble .instructor-hours-input::-moz-placeholder {
+  text-align: center;
+}
+.hours-bubble .instructor-hours-input:-ms-input-placeholder {
+  text-align: center;
+}
+  border: none;
+  color: #e0f2fe;
+  font-weight: 600;
+  width: 54px;
+  box-shadow: none;
+  padding: 4px 0;
+  font-size: 1.08em;
+  outline: none;
+}
+
+.hours-bubble .instructor-hours-input:focus {
+  outline: none;
+  border: none;
+  box-shadow: 0 0 0 2px #7dd3fc;
+  background: rgba(125, 211, 252, 0.08);
+}
+.instructor-hours-input {
+  width: 70px;
+  font-size: 1.08em;
+  padding: 7px 18px;
+  border-radius: 999px;
+  border: 1.5px solid #38bdf8;
+  background: linear-gradient(180deg, rgba(56,189,248,0.10), rgba(11,18,32,0.85));
+  color: #38bdf8;
+  font-weight: 600;
+  margin-bottom: 0;
+  outline: none;
+  box-shadow: 0 2px 8px rgba(2, 6, 23, 0.10);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  letter-spacing: 0.01em;
+}
+.instructor-hours-input:focus {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 2px #38bdf8;
+}
+.instructor-hours-label {
+  font-size: 0.98em;
+  font-weight: 600;
+  color: #7dd3fc;
+  margin-bottom: 2px;
+  letter-spacing: 0.01em;
+}
+.instructor-hours-error {
+  color: #e11d48;
+  font-size: 0.85em;
+  margin-top: 2px;
+  font-weight: 500;
+}
+.syllabus-save-row .instructor-hours-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-right: 12px;
+  margin-left: 30%;
+}

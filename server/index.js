@@ -214,17 +214,23 @@ Rules:
 
     if (!response.ok) {
       const apiError = await response.text();
+      console.error('[/api/briefing] OpenAI API error:', apiError);
       return res.status(502).json({ error: `OpenAI request failed: ${apiError}` });
     }
 
     const data = await response.json();
     let text = data.output_text ?? '';
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-    const briefing = JSON.parse(text);
-    res.json({ briefing, source: 'openai' });
+    try {
+      const briefing = JSON.parse(text);
+      res.json({ briefing, source: 'openai' });
+    } catch (parseError) {
+      console.error('[/api/briefing] JSON parse error:', parseError, 'Raw text:', text);
+      res.status(500).json({ error: 'Failed to parse OpenAI response as JSON.', raw: text });
+    }
   } catch (error) {
-    console.error('[/api/briefing] error:', error?.message ?? error);
-    res.status(500).json({ error: 'Failed to generate briefing.' });
+    console.error('[/api/briefing] error:', error?.message ?? error, error);
+    res.status(500).json({ error: 'Failed to generate briefing.', details: error?.message ?? error });
   }
 });
 

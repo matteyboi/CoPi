@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
+import './instructorHours.css';
 import copiLogo from './7F5D28DA-9DA4-47A8-83DA-F88671CB6067-removebg-preview.png';
 import logoAI from './Matched_Design_Style_2-removebg-preview.png';
 import { initializeData, oralSessions as defaultOralSessions, progressHistory as defaultProgressHistory, syllabus as defaultSyllabus } from './data/syllabusData';
@@ -92,6 +93,31 @@ const buildFallbackThreadTitle = (messages) => {
 };
 
 function App() {
+  // Instructor flight hours input (FAA format, e.g., 1.4)
+  const [instructorHours, setInstructorHours] = useState('');
+  // Checklist state for Medical, TSA, IACRA
+  const [syllabusChecklist, setSyllabusChecklist] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = window.localStorage.getItem('syllabus-checklist');
+        return saved ? JSON.parse(saved) : { medical: false, tsa: false, iacra: false };
+      } catch {
+        return { medical: false, tsa: false, iacra: false };
+      }
+    }
+    return { medical: false, tsa: false, iacra: false };
+  });
+  const handleChecklistChange = (key) => {
+    setSyllabusChecklist((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('syllabus-checklist', JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+  const allChecklistComplete = syllabusChecklist.medical && syllabusChecklist.tsa && syllabusChecklist.iacra;
+      const [hoursError, setHoursError] = useState('');
     // Stage 6 checkboxes state (must be outside map)
     const [stage6Checked, setStage6Checked] = React.useState(() => {
       if (typeof window !== 'undefined') {
@@ -186,13 +212,11 @@ function App() {
         },
       ];
     }
-
     try {
       const storedThreads = JSON.parse(window.localStorage.getItem(CHAT_THREADS_STORAGE_KEY) ?? '[]');
       if (Array.isArray(storedThreads) && storedThreads.length) {
         return storedThreads;
       }
-
       const legacyMessages = JSON.parse(window.localStorage.getItem(LEGACY_CHAT_STORAGE_KEY) ?? '[]');
       if (Array.isArray(legacyMessages) && legacyMessages.length) {
         return [
@@ -206,17 +230,8 @@ function App() {
         ];
       }
     } catch {
-      return [
-        {
-          id: 'chat-default',
-          title: 'Conversation',
-          pinned: false,
-          updatedAt: new Date().toISOString(),
-          messages: [],
-        },
-      ];
+      // ignore and fall through to default
     }
-
     return [
       {
         id: 'chat-default',
@@ -947,6 +962,13 @@ function App() {
     if (!instructorMode) {
       return;
     }
+    // Validate instructor hours (FAA format: number with up to 1 decimal)
+    const hoursPattern = /^\d+(\.\d)?$/;
+    if (!instructorHours || !hoursPattern.test(instructorHours)) {
+      setHoursError('Enter hours in FAA format (e.g., 1.4)');
+      return;
+    }
+    setHoursError('');
     // Clone the draft statuses so we can update them before saving
     const updatedStatuses = { ...sessionDraftStatuses };
     // For each session, if it is in-progress and has a 5-star rating, mark as completed
@@ -961,7 +983,8 @@ function App() {
     setPlannedSessionIds([...plannedDraftSessionIds]);
     setSessionDraftStatuses({});
     setSessionDraftRatings({});
-    setNoteToastMessage('Syllabus changes saved.');
+    // Removed syllabus changes saved toast
+    setInstructorHours('');
     // Force a re-render by updating a dummy state
     setTimeout(() => setSessionStatuses((s) => ({ ...s })), 0);
   };
@@ -1683,7 +1706,6 @@ function App() {
       }
 
       setStudentPhoto(imageData);
-      setNoteToastMessage('Student photo updated.');
     } catch {
       setNoteToastMessage('Could not load image. Please try again.');
     }
@@ -1964,6 +1986,16 @@ function App() {
               ) : null}
             </div>
 
+            {/* Progress Percentage Label (floating above fill) */}
+            <div
+              className="hero-progress-percentage-label"
+              style={{
+                left: `calc(${completionRate}% - 18px)`,
+                bottom: '22px', // Move label 10px closer to the bar (was 32px)
+              }}
+            >
+              {completionRate}%
+            </div>
             <div
               className="hero-stage-progress"
               role="button"
@@ -2115,17 +2147,36 @@ function App() {
             ) : null}
 
             {instructorMode ? (
-              <div className="syllabus-save-row">
+              <div className="syllabus-save-row" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div className="instructor-hours-group">
+                  <div className="hours-bubble">
+                    <span className="hours-bubble-label">Hours</span>
+                    <input
+                      id="instructor-hours-input"
+                      type="text"
+                      value={instructorHours}
+                      onChange={e => setInstructorHours(e.target.value)}
+                      className="instructor-hours-input"
+                      inputMode="decimal"
+                      placeholder=""
+                      onFocus={e => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
+                    />
+                  </div>
+                  {hoursError && <span className="instructor-hours-error">{hoursError}</span>}
+                </div>
                 <button
                   type="button"
                   className="planned-save-button"
                   onClick={saveSyllabusChanges}
                   disabled={!hasPendingSyllabusChanges || isInstrumentComingSoon}
+                  style={{ marginLeft: 8 }}
                 >
                   Save Syllabus
                 </button>
               </div>
             ) : null}
+
+            {/* Checklist is now rendered inside Phase 1 dropdown above Engine Starting */}
 
             <div className="phase-grid">
               {phasesWithProgress.map((phase, index) => {
@@ -2184,12 +2235,22 @@ function App() {
                   );
                 }
                 // ...existing code for other phases...
-                const stageState = phaseLockStates[index] ?? { isLocked: false };
-                const isLocked = stageState.isLocked;
+                let stageState = phaseLockStates[index] ?? { isLocked: false };
+                let isLocked = stageState.isLocked;
+                // Lock Stage 2 unless ALL checklist items are checked (Medical, TSA, IACRA)
+                if (
+                  phase.title &&
+                  phase.title.trim().toLowerCase().startsWith('stage 2') &&
+                  !allChecklistComplete
+                ) {
+                  isLocked = true;
+                }
                 const isExpanded = Boolean(expandedStageIds[phase.id]);
                 const nonBlankSessions = phase.sessions.filter(
                   (session) => session && session.title && session.title.trim() !== ''
                 );
+                // Move checklist into Phase 1 dropdown above Engine Starting
+                const isPhase1 = phase.title && phase.title.trim().toLowerCase().startsWith('stage 1');
                 return (
                   <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
                     <button
@@ -2205,7 +2266,11 @@ function App() {
                     >
                       <div>
                         <p className="phase-title">{phase.title}</p>
-                        {isLocked ? <p className="phase-locked-note">Complete the previous stage to unlock.</p> : null}
+                        {isLocked && phase.title && phase.title.trim().toLowerCase().startsWith('stage 2') && (!allChecklistComplete || !allPhase1Complete) ? (
+                          <p className="phase-locked-note">Complete all Phase 1 tasks and check Medical, TSA Endorsement, and IACRA before continuing to Phase 2.</p>
+                        ) : isLocked ? (
+                          <p className="phase-locked-note">Complete the previous stage to unlock.</p>
+                        ) : null}
                       </div>
                       <span className="phase-dropdown-caret">{isExpanded ? '▾' : '▸'}</span>
                     </button>
@@ -2223,6 +2288,22 @@ function App() {
                     {isExpanded ? (
                       <div className={`session-list${isLocked ? ' phase-content-locked' : ''}`}
                         style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
+                        {/* Checklist for Medical, TSA, IACRA goes here for Phase 1 */}
+                        {isPhase1 && (
+                          <div className="syllabus-checklist-card phase1-checklist-inside">
+                            <div className="syllabus-checklist-row">
+                              <label className="syllabus-checklist-item">
+                                <input type="checkbox" checked={syllabusChecklist.medical} onChange={() => handleChecklistChange('medical')} /> Medical
+                              </label>
+                              <label className="syllabus-checklist-item">
+                                <input type="checkbox" checked={syllabusChecklist.tsa} onChange={() => handleChecklistChange('tsa')} /> TSA Endorsement
+                              </label>
+                              <label className="syllabus-checklist-item">
+                                <input type="checkbox" checked={syllabusChecklist.iacra} onChange={() => handleChecklistChange('iacra')} /> IACRA
+                              </label>
+                            </div>
+                          </div>
+                        )}
                         {nonBlankSessions.map((session) => (
                           <div className="session-row" key={session.id} style={{ position: 'relative' }}>
                             <div className="session-main">
@@ -2351,12 +2432,29 @@ function App() {
             ) : null}
 
             {instructorMode ? (
-              <div className="syllabus-save-row syllabus-save-row-bottom">
+              <div className="syllabus-save-row syllabus-save-row-bottom" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div className="instructor-hours-group">
+                  <div className="hours-bubble">
+                    <span className="hours-bubble-label">Hours</span>
+                    <input
+                      id="instructor-hours-input-bottom"
+                      type="text"
+                      value={instructorHours}
+                      onChange={e => setInstructorHours(e.target.value)}
+                      className="instructor-hours-input"
+                      inputMode="decimal"
+                      placeholder=""
+                      onFocus={e => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
+                    />
+                  </div>
+                  {hoursError && <span className="instructor-hours-error">{hoursError}</span>}
+                </div>
                 <button
                   type="button"
                   className="planned-save-button"
                   onClick={saveSyllabusChanges}
                   disabled={!hasPendingSyllabusChanges || isInstrumentComingSoon}
+                  style={{ marginLeft: 8 }}
                 >
                   Save Syllabus
                 </button>
@@ -2366,63 +2464,13 @@ function App() {
           </section>
         )}
 
-        {activeTab === 'progress' && (
-          <section className="tab-content">
-            <section className="progress-section">
-              <div className="section-heading">
-                <p className="eyebrow">Your progress</p>
-                <h2>Training snapshot</h2>
-              </div>
-
-              {latestProgressSnapshot ? (
-                <article className="stat-card wide">
-                  <span className="stat-label">Latest progress snapshot</span>
-                  <strong className="stat-value">{latestProgressSnapshot.completion_pct}%</strong>
-                  <span className="stat-helper">
-                    {latestProgressSnapshot.completed_lessons}/{latestProgressSnapshot.total_lessons} lessons completed
-                  </span>
-                </article>
-              ) : (
-                <p style={{ color: '#cbd5e1' }}>No progress snapshots saved yet.</p>
-              )}
-
-              {latestOralSession ? (
-                <article className="stat-card wide">
-                  <span className="stat-label">Latest oral review</span>
-                  <strong className="stat-value">{latestOralSession.pct}%</strong>
-                  <span className="stat-helper">
-                    {latestOralSession.topic} · {latestOralSession.correct}/{latestOralSession.total} correct
-                  </span>
-                  {latestOralSession.missed_questions?.length ? (
-                    <ul className="detail-list" style={{ marginTop: '16px' }}>
-                      {latestOralSession.missed_questions.map((question) => (
-                        <li key={question}>{question}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </article>
-              ) : (
-                <p style={{ color: '#cbd5e1' }}>No oral reviews logged yet.</p>
-              )}
-
-              <div style={{ marginTop: '24px' }}>
-                <h3 style={{ color: '#e2e8f0', marginBottom: '16px' }}>Lessons by status</h3>
-                <div className="stats-grid">
-                  <article className="stat-card">
-                    <span className="stat-label">Completed</span>
-                    <strong className="stat-value">{completedSessions.length}</strong>
-                  </article>
-                  <article className="stat-card">
-                    <span className="stat-label">In progress</span>
-                    <strong className="stat-value">{inProgressSessions.length}</strong>
-                  </article>
-                  <article className="stat-card">
-                    <span className="stat-label">Planned</span>
-                    <strong className="stat-value">{plannedSessions.length}</strong>
-                  </article>
-                </div>
-              </div>
-            </section>
+        {activeTab === 'ground' && (
+          <section className="tab-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 220 }}>
+            <h2 style={{ color: '#e2e8f0', marginBottom: 12 }}>Ground School</h2>
+            <div style={{ color: '#cbd5e1', fontSize: '1.2rem', opacity: 0.8, textAlign: 'center' }}>
+              <span role="img" aria-label="Coming soon" style={{ fontSize: '2.5rem', display: 'block', marginBottom: 8 }}>🛫</span>
+              Ground school features are coming soon!
+            </div>
           </section>
         )}
 
@@ -2591,18 +2639,18 @@ function App() {
             <img src={logoAI} alt="CoPi Logo" style={{ height: 96, width: 96, objectFit: 'contain' }} />
           </button>
           <button
-            className={`tab-bubble ${activeTab === 'progress' ? 'active' : ''}`}
-            onClick={() => setActiveTab('progress')}
-            type="button"
-          >
-            Progress
-          </button>
-          <button
             className={`tab-bubble history-tab ${activeTab === 'history' ? 'active' : ''}`}
             onClick={() => setActiveTab('history')}
             type="button"
           >
             History
+          </button>
+          <button
+            className={`tab-bubble ${activeTab === 'ground' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ground')}
+            type="button"
+          >
+            Ground
           </button>
         </section>
 
