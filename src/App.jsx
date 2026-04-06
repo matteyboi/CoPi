@@ -1,3 +1,17 @@
+// Checklist state for Phase 1 (Medical, TSA Endorsement, IACRA)
+const PHASE1_CHECKLIST_LABELS = ['Medical', 'TSA Endorsement', 'IACRA'];
+
+function getInitialChecklistState() {
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = window.localStorage.getItem('phase1-checklist');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import './instructorHours.css';
@@ -93,30 +107,23 @@ const buildFallbackThreadTitle = (messages) => {
 };
 
 function App() {
+    // Phase 1 checklist state (generic checkboxes)
+    const [checklistState, setChecklistState] = React.useState(getInitialChecklistState);
+    const handleChecklistCheck = (item) => {
+      setChecklistState((prev) => {
+        const next = { ...prev, [item]: !prev[item] };
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('phase1-checklist', JSON.stringify(next));
+        }
+        return next;
+      });
+    };
+    // All checklist boxes complete?
+    const allChecklistComplete = PHASE1_CHECKLIST_LABELS.every((label, idx) => checklistState[`box${idx}`]);
   // Instructor flight hours input (FAA format, e.g., 1.4)
   const [instructorHours, setInstructorHours] = useState('');
-  // Checklist state for Medical, TSA, IACRA
-  const [syllabusChecklist, setSyllabusChecklist] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = window.localStorage.getItem('syllabus-checklist');
-        return saved ? JSON.parse(saved) : { medical: false, tsa: false, iacra: false };
-      } catch {
-        return { medical: false, tsa: false, iacra: false };
-      }
-    }
-    return { medical: false, tsa: false, iacra: false };
-  });
-  const handleChecklistChange = (key) => {
-    setSyllabusChecklist((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('syllabus-checklist', JSON.stringify(next));
-      }
-      return next;
-    });
-  };
-  const allChecklistComplete = syllabusChecklist.medical && syllabusChecklist.tsa && syllabusChecklist.iacra;
+  // Checklist state removed (IACRA)
+  // (No checklist state remains)
       const [hoursError, setHoursError] = useState('');
     // Stage 6 checkboxes state (must be outside map)
     const [stage6Checked, setStage6Checked] = React.useState(() => {
@@ -2179,7 +2186,44 @@ function App() {
             {/* Checklist is now rendered inside Phase 1 dropdown above Engine Starting */}
 
             <div className="phase-grid">
+              {/* Render phases, and insert Solo checkbox between Phase 1 and Phase 2 */}
               {phasesWithProgress.map((phase, index) => {
+                // Insert Solo checkbox after Phase 1 and before Phase 2
+                const isPhase1 = phase.title && phase.title.toLowerCase().includes('phase 1');
+                const isPhase2 = phase.title && phase.title.toLowerCase().includes('phase 2');
+                let soloCheckbox = null;
+                if (
+                  index > 0 &&
+                  phasesWithProgress[index - 1].title &&
+                  phasesWithProgress[index - 1].title.toLowerCase().includes('phase 1') &&
+                  isPhase2
+                ) {
+                  soloCheckbox = (
+                    <div className="solo-checkbox-row">
+                      <label className="solo-checkbox-label">
+                        <input
+                          type="checkbox"
+                          className="solo-checkbox-input"
+                          checked={!!checklistState.solo}
+                          onChange={() => {
+                            setChecklistState(prev => {
+                              const next = { ...prev, solo: !prev.solo };
+                              if (typeof window !== 'undefined') {
+                                window.localStorage.setItem('phase1-checklist', JSON.stringify(next));
+                              }
+                              return next;
+                            });
+                          }}
+                          style={{ accentColor: '#f59e42', width: 22, height: 22, marginRight: 10, boxShadow: '0 2px 8px #f59e4233' }}
+                          aria-label="Solo Endorsement"
+                        />
+                        <span className="solo-checkbox-text">
+                          ✈️ <span style={{fontWeight:700,letterSpacing:'0.04em',color:'#f59e42'}}>Solo</span> Endorsement
+                        </span>
+                      </label>
+                    </div>
+                  );
+                }
                 // Make Stage 6 collapsible with its unique checklist UI
                 if (phase.title && phase.title.startsWith('Stage 6')) {
                   const stageState = phaseLockStates[index] ?? { isLocked: false };
@@ -2235,9 +2279,11 @@ function App() {
                   );
                 }
                 // ...existing code for other phases...
-                let stageState = phaseLockStates[index] ?? { isLocked: false };
-                let isLocked = stageState.isLocked;
-                // Lock Stage 2 unless ALL checklist items are checked (Medical, TSA, IACRA)
+                // Insert Solo checkbox between Phase 1 and Phase 2
+                let stageState, isLocked, isExpanded, nonBlankSessions;
+                stageState = phaseLockStates[index] ?? { isLocked: false };
+                isLocked = stageState.isLocked;
+                // Lock Stage 2 unless ALL checklist items are checked (none remain)
                 if (
                   phase.title &&
                   phase.title.trim().toLowerCase().startsWith('stage 2') &&
@@ -2245,17 +2291,100 @@ function App() {
                 ) {
                   isLocked = true;
                 }
-                const isExpanded = Boolean(expandedStageIds[phase.id]);
-                const nonBlankSessions = phase.sessions.filter(
+                isExpanded = Boolean(expandedStageIds[phase.id]);
+                nonBlankSessions = phase.sessions.filter(
                   (session) => session && session.title && session.title.trim() !== ''
                 );
-                // Move checklist into Phase 1 dropdown above Engine Starting
-                const isPhase1 = phase.title && phase.title.trim().toLowerCase().startsWith('stage 1');
+                if (soloCheckbox) {
+                  return (
+                    <React.Fragment key={phase.id + '-with-solo'}>
+                      {soloCheckbox}
+                      <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
+                        <div
+                          className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}`}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => {
+                            setExpandedStageIds((current) => ({
+                              ...current,
+                              [phase.id]: !current[phase.id],
+                            }));
+                          }}
+                          aria-expanded={isExpanded}
+                        >
+                          <p className="phase-title" style={{ margin: 0 }}>{phase.title}</p>
+                          {isLocked && phase.title && phase.title.trim().toLowerCase().startsWith('stage 2') && (!allChecklistComplete || !allPhase1Complete) ? (
+                            <p className="phase-locked-note">Complete all Phase 1 tasks before continuing to Phase 2.</p>
+                          ) : isLocked ? (
+                            <p className="phase-locked-note">Complete the previous stage to unlock.</p>
+                          ) : null}
+                        </div>
+                        {isExpanded && phase.dpeGuidance ? (
+                          <section className="phase-guidance phase-content-locked" style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
+                            <p className="phase-guidance-title">DPE & FAA focus</p>
+                            <ul className="phase-guidance-list">
+                              {phase.dpeGuidance.focus?.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                            <p className="phase-guidance-ref">{phase.dpeGuidance.acsReference}</p>
+                          </section>
+                        ) : null}
+                        {isExpanded ? (
+                          <div className={`session-list${isLocked ? ' phase-content-locked' : ''}`}
+                            style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
+                            {/* No checklist items remain for Phase 1 */}
+                            {isPhase1 && (
+                              <div className="syllabus-checklist-card">
+                                <div className="syllabus-checklist-row">
+                                  {PHASE1_CHECKLIST_LABELS.map((label, idx) => (
+                                    <label className="syllabus-checklist-item" key={label}>
+                                      <input
+                                        type="checkbox"
+                                        checked={!!checklistState[`box${idx}`]}
+                                        onChange={() => handleChecklistCheck(`box${idx}`)}
+                                        style={{ width: '18px', height: '18px', accentColor: '#38bdf8', cursor: 'pointer' }}
+                                        aria-label={label}
+                                        disabled={isLocked}
+                                      />
+                                      {label}
+                                    </label>
+                                  ))}
+                                  {allChecklistComplete && (
+                                    <span style={{ fontWeight: 500, color: '#22c55e' }}>
+                                      Complete
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {nonBlankSessions.map((session) => (
+                              <div className="session-row" key={session.id} style={{ position: 'relative' }}>
+                                <div className="session-main">
+                                  <div className="session-copy">
+                                    <div className="session-title-row">
+                                      <h3>{session.title}</h3>
+                                    </div>
+                                    {/* Standards Link Icon (bottom right) */}
+                                    {Array.isArray(session.standards) && session.standards.length > 0 && (() => {
+                                      // Prefer AC link if present, otherwise first
+                                      const ac = session.standards.find(std => std.ref.startsWith('AC'));
+                                      // ...existing code...
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </article>
+                    </React.Fragment>
+                  );
+                }
                 return (
                   <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
-                    <button
-                      type="button"
+                    <div
                       className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}`}
+                      style={{ cursor: 'pointer' }}
                       onClick={() => {
                         setExpandedStageIds((current) => ({
                           ...current,
@@ -2264,16 +2393,13 @@ function App() {
                       }}
                       aria-expanded={isExpanded}
                     >
-                      <div>
-                        <p className="phase-title">{phase.title}</p>
-                        {isLocked && phase.title && phase.title.trim().toLowerCase().startsWith('stage 2') && (!allChecklistComplete || !allPhase1Complete) ? (
-                          <p className="phase-locked-note">Complete all Phase 1 tasks and check Medical, TSA Endorsement, and IACRA before continuing to Phase 2.</p>
-                        ) : isLocked ? (
-                          <p className="phase-locked-note">Complete the previous stage to unlock.</p>
-                        ) : null}
-                      </div>
-                      <span className="phase-dropdown-caret">{isExpanded ? '▾' : '▸'}</span>
-                    </button>
+                      <p className="phase-title" style={{ margin: 0 }}>{phase.title}</p>
+                      {isLocked && phase.title && phase.title.trim().toLowerCase().startsWith('stage 2') && (!allChecklistComplete || !allPhase1Complete) ? (
+                        <p className="phase-locked-note">Complete all Phase 1 tasks before continuing to Phase 2.</p>
+                      ) : isLocked ? (
+                        <p className="phase-locked-note">Complete the previous stage to unlock.</p>
+                      ) : null}
+                    </div>
                     {isExpanded && phase.dpeGuidance ? (
                       <section className="phase-guidance phase-content-locked" style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
                         <p className="phase-guidance-title">DPE & FAA focus</p>
@@ -2288,19 +2414,28 @@ function App() {
                     {isExpanded ? (
                       <div className={`session-list${isLocked ? ' phase-content-locked' : ''}`}
                         style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
-                        {/* Checklist for Medical, TSA, IACRA goes here for Phase 1 */}
+                        {/* No checklist items remain for Phase 1 */}
                         {isPhase1 && (
-                          <div className="syllabus-checklist-card phase1-checklist-inside">
+                          <div className="syllabus-checklist-card">
                             <div className="syllabus-checklist-row">
-                              <label className="syllabus-checklist-item">
-                                <input type="checkbox" checked={syllabusChecklist.medical} onChange={() => handleChecklistChange('medical')} /> Medical
-                              </label>
-                              <label className="syllabus-checklist-item">
-                                <input type="checkbox" checked={syllabusChecklist.tsa} onChange={() => handleChecklistChange('tsa')} /> TSA Endorsement
-                              </label>
-                              <label className="syllabus-checklist-item">
-                                <input type="checkbox" checked={syllabusChecklist.iacra} onChange={() => handleChecklistChange('iacra')} /> IACRA
-                              </label>
+                              {PHASE1_CHECKLIST_LABELS.map((label, idx) => (
+                                <label className="syllabus-checklist-item" key={label}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!checklistState[`box${idx}`]}
+                                    onChange={() => handleChecklistCheck(`box${idx}`)}
+                                    style={{ width: '18px', height: '18px', accentColor: '#38bdf8', cursor: 'pointer' }}
+                                    aria-label={label}
+                                    disabled={isLocked}
+                                  />
+                                  {label}
+                                </label>
+                              ))}
+                              {allChecklistComplete && (
+                                <span style={{ fontWeight: 500, color: '#22c55e' }}>
+                                  Complete
+                                </span>
+                              )}
                             </div>
                           </div>
                         )}

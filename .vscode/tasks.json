@@ -8,6 +8,22 @@
 			"isBackground": true,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "Run Vitest Tests",
+			"type": "shell",
+			"command": "npx vitest run",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Vitest Watch Mode",
+			"type": "shell",
+			"command": "npx vitest --watch",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "test"
 		}
 	]
 }

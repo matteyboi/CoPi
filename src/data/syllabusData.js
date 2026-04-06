@@ -22,10 +22,6 @@ const CANONICAL_STAGES = [
   {
     title: 'Phase 1 — Beginner: Foundations, Preflight & Basic Maneuvers',
     tasks: [
-      // Inserted checklist items just above Engine Starting
-      '[CHECKLIST] Medical',
-      '[CHECKLIST] TSA Endorsement',
-      '[CHECKLIST] IACRA',
       'Engine Starting',
       'Taxiing (ASEL, AMEL)',
       'Traffic Patterns',
