@@ -2186,18 +2186,58 @@ function App() {
             {/* Checklist is now rendered inside Phase 1 dropdown above Engine Starting */}
 
             <div className="phase-grid">
-              {/* Render phases, and insert Solo checkbox between Phase 1 and Phase 2 */}
+              {/* Render phases, and insert Solo checkbox after Phase 2 and before Phase 3 */}
               {phasesWithProgress.map((phase, index) => {
-                // Insert Solo checkbox after Phase 1 and before Phase 2
+                // Insert Solo checkbox after Phase 2 and before Phase 3
                 const isPhase1 = phase.title && phase.title.toLowerCase().includes('phase 1');
                 const isPhase2 = phase.title && phase.title.toLowerCase().includes('phase 2');
+                const isPhase3 = phase.title && phase.title.toLowerCase().includes('phase 3');
+                let soloChecklist = null;
                 let soloCheckbox = null;
                 if (
                   index > 0 &&
                   phasesWithProgress[index - 1].title &&
-                  phasesWithProgress[index - 1].title.toLowerCase().includes('phase 1') &&
-                  isPhase2
+                  phasesWithProgress[index - 1].title.toLowerCase().includes('phase 2') &&
+                  isPhase3
                 ) {
+                  // Checklist for pre-solo endorsements
+                  const SOLO_CHECKLIST_LABELS = [
+                    'Pre-Solo Knowledge Test',
+                    'Pre-Solo Flight Training',
+                    'Training in Make & Model',
+                  ];
+                  // Determine if Phase 2 is complete (all sessions have status 'completed')
+                  const phase2 = phasesWithProgress.find(p => p.title && p.title.toLowerCase().includes('phase 2'));
+                  const phase2Complete = phase2 && phase2.sessions.every(s => s.status === 'completed');
+                  soloChecklist = (
+                    <div className="syllabus-checklist-card" style={{marginBottom: 0}}>
+                      <div className="syllabus-checklist-row">
+                        {SOLO_CHECKLIST_LABELS.map((label, idx) => (
+                          <label className="syllabus-checklist-item" key={label}>
+                            <input
+                              type="checkbox"
+                              checked={!!checklistState[`soloCheck${idx}`]}
+                              onChange={() => {
+                                if (!phase2Complete) return;
+                                setChecklistState(prev => {
+                                  const next = { ...prev, [`soloCheck${idx}`]: !prev[`soloCheck${idx}`] };
+                                  if (typeof window !== 'undefined') {
+                                    window.localStorage.setItem('phase1-checklist', JSON.stringify(next));
+                                  }
+                                  return next;
+                                });
+                              }}
+                              style={{ width: '18px', height: '18px', accentColor: '#38bdf8', cursor: phase2Complete ? 'pointer' : 'not-allowed', opacity: phase2Complete ? 1 : 0.5 }}
+                              aria-label={label}
+                              disabled={!phase2Complete}
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                  const allSoloChecklistComplete = [0,1,2].every(idx => !!checklistState[`soloCheck${idx}`]);
                   soloCheckbox = (
                     <div className="solo-checkbox-row">
                       <label className="solo-checkbox-label">
@@ -2206,6 +2246,7 @@ function App() {
                           className="solo-checkbox-input"
                           checked={!!checklistState.solo}
                           onChange={() => {
+                            if (!allSoloChecklistComplete) return;
                             setChecklistState(prev => {
                               const next = { ...prev, solo: !prev.solo };
                               if (typeof window !== 'undefined') {
@@ -2214,11 +2255,12 @@ function App() {
                               return next;
                             });
                           }}
-                          style={{ accentColor: '#f59e42', width: 22, height: 22, marginRight: 10, boxShadow: '0 2px 8px #f59e4233' }}
-                          aria-label="Solo Endorsement"
+                          style={{ accentColor: '#f59e42', width: 22, height: 22, marginRight: 10, boxShadow: '0 2px 8px #f59e4233', cursor: allSoloChecklistComplete ? 'pointer' : 'not-allowed', opacity: allSoloChecklistComplete ? 1 : 0.5 }}
+                          aria-label="Solo"
+                          disabled={!allSoloChecklistComplete}
                         />
                         <span className="solo-checkbox-text">
-                          ✈️ <span style={{fontWeight:700,letterSpacing:'0.04em',color:'#f59e42'}}>Solo</span> Endorsement
+                          ✈️ <span style={{fontWeight:700,letterSpacing:'0.04em',color:'#f59e42'}}>Solo</span>
                         </span>
                       </label>
                     </div>
@@ -2295,9 +2337,10 @@ function App() {
                 nonBlankSessions = phase.sessions.filter(
                   (session) => session && session.title && session.title.trim() !== ''
                 );
-                if (soloCheckbox) {
+                if (soloChecklist || soloCheckbox) {
                   return (
                     <React.Fragment key={phase.id + '-with-solo'}>
+                      {soloChecklist}
                       {soloCheckbox}
                       <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
                         <div
