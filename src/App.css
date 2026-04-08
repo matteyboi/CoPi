@@ -2595,8 +2595,9 @@
 }
 
 .phase-dropdown-button.is-locked {
-  cursor: default;
+  /* Only visually indicate locked, do not block pointer events or change cursor */
   opacity: 0.72;
+  pointer-events: auto !important;
 }
 
 .phase-dropdown-button.is-locked .phase-title {

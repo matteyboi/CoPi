@@ -2288,6 +2288,7 @@ function App() {
                 // Insert Solo checkbox after Phase 2 and before Phase 3
                 const isPhase1 = phase.title && phase.title.toLowerCase().includes('phase 1 - foundations, preflight & basic maneuvers');
                 const isPhase2 = phase.title && phase.title.toLowerCase().includes('phase 2');
+                // isPhase3 declared only once below if not already
                 const isPhase3 = phase.title && phase.title.toLowerCase().includes('phase 3');
                 let soloChecklist = null;
                 let soloCheckbox = null;
@@ -2328,9 +2329,9 @@ function App() {
                   const isExpanded = Boolean(expandedStageIds[phase.id]);
                   return (
                     <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
-                      <button
-                        type="button"
+                      <div
                         className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}`}
+                        style={{ cursor: 'pointer' }}
                         onClick={() => {
                           setExpandedStageIds((current) => ({
                             ...current,
@@ -2339,14 +2340,12 @@ function App() {
                         }}
                         aria-expanded={isExpanded}
                       >
-                        <div>
-                          <p className="phase-title">{phase.title}</p>
-                          {isLocked ? (
-                            <p className="phase-locked-note">Complete all previous stages to unlock.</p>
-                          ) : null}
-                        </div>
+                        <p className="phase-title">{phase.title}</p>
+                        {isLocked ? (
+                          <p className="phase-locked-note">Complete all previous stages to unlock.</p>
+                        ) : null}
                         <span className="phase-dropdown-caret">{isExpanded ? '▾' : '▸'}</span>
-                      </button>
+                      </div>
                       {isExpanded && (
                         <div className={`phase-content${isLocked ? ' phase-content-locked' : ''}`}
                           style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
@@ -2398,7 +2397,7 @@ function App() {
                       {soloCheckbox}
                       <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
                         <div
-                          className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}`}
+                          className="phase-card-header phase-dropdown-button"
                           style={{ cursor: 'pointer' }}
                           onClick={() => {
                             setExpandedStageIds((current) => ({
@@ -2440,7 +2439,7 @@ function App() {
                   <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
                     <div
                       className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}`}
-                      style={{ cursor: 'pointer' }}
+                      style={{ cursor: isLocked ? 'not-allowed' : 'pointer' }}
                       onClick={() => {
                         setExpandedStageIds((current) => ({
                           ...current,
