@@ -2154,9 +2154,19 @@ function App() {
             ) : null}
 
             {instructorMode ? (
-              <div className="syllabus-save-row" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div className="syllabus-save-row" style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                <div style={{ marginLeft: '10%' }}>
+                  <button
+                    type="button"
+                    className="endorsement-photo-dropdown-btn syllabus-row-move"
+                    style={{ marginRight: 8 }}
+                    // Add onClick handler if needed for dropdown
+                  >
+                    Endorsements
+                  </button>
+                </div>
                 <div className="instructor-hours-group">
-                  <div className="hours-bubble">
+                  <div className="hours-bubble" style={{ marginRight: 0 }}>
                     <span className="hours-bubble-label">Hours</span>
                     <input
                       id="instructor-hours-input"
@@ -2176,9 +2186,9 @@ function App() {
                   className="planned-save-button"
                   onClick={saveSyllabusChanges}
                   disabled={!hasPendingSyllabusChanges || isInstrumentComingSoon}
-                  style={{ marginLeft: 8 }}
+                  style={{ marginLeft: 8, marginRight: '5%' }}
                 >
-                  Save Syllabus
+                  Save
                 </button>
               </div>
             ) : null}
