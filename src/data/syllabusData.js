@@ -333,68 +333,44 @@ function transformSyllabus() {
           ];
           standards = links[lessonIndex] || [];
         }
-        // Always include AC 61-65J as a standard for every task
-        // Map AC 61-65J links to the most relevant section for each maneuver
-        const ac61_65j_base = 'https://www.faa.gov/regulations_policies/advisory_circulars/index.cfm/go/document.information/documentID/1044436';
-        // Mapping of maneuver keywords to AC 61-65J anchors or page references
-        const ac61_65j_links = {
-          'Pilot Qualifications': ac61_65j_base + '#page=7',
-          'Airworthiness Requirements': ac61_65j_base + '#page=10',
-          'Weather Information': ac61_65j_base + '#page=13',
-          'Cross-Country Flight Planning': ac61_65j_base + '#page=15',
-          'National Airspace System': ac61_65j_base + '#page=18',
-          'Performance and Limitations': ac61_65j_base + '#page=20',
-          'Operation of Systems': ac61_65j_base + '#page=22',
-          'Human Factors': ac61_65j_base + '#page=24',
-          'Preflight Assessment': ac61_65j_base + '#page=26',
-          'Flight Deck Management': ac61_65j_base + '#page=28',
-          'Engine Starting': ac61_65j_base + '#page=30',
-          'Taxiing': ac61_65j_base + '#page=32',
-          'Taxiing (ASEL, AMEL)': ac61_65j_base + '#page=32',
-          'Before Takeoff Check': ac61_65j_base + '#page=34',
-          'Communications, Light Signals, and Runway Lighting Systems': ac61_65j_base + '#page=36',
-          'Traffic Patterns': ac61_65j_base + '#page=38',
-          'Normal Takeoff and Climb': ac61_65j_base + '#page=40',
-          'Normal Approach and Landing': ac61_65j_base + '#page=42',
-          'Soft-Field Takeoff and Climb': ac61_65j_base + '#page=44',
-          'Soft-Field Approach and Landing': ac61_65j_base + '#page=46',
-          'Short-Field Takeoff and Maximum Performance Climb': ac61_65j_base + '#page=48',
-          'Short-Field Approach and Landing': ac61_65j_base + '#page=50',
-          'Steep Turns': ac61_65j_base + '#page=52',
-          'Ground Reference Maneuvers': ac61_65j_base + '#page=54',
-          'Maneuvering During Slow Flight': ac61_65j_base + '#page=56',
-          'Power-Off Stalls': ac61_65j_base + '#page=58',
-          'Power-On Stalls': ac61_65j_base + '#page=60',
-          'Spin Awareness': ac61_65j_base + '#page=62',
-          'Forward Slip to a Landing': ac61_65j_base + '#page=64',
-          'Go-Around/Rejected Landing': ac61_65j_base + '#page=66',
-          'Emergency Descent': ac61_65j_base + '#page=68',
-          'Emergency Approach and Landing': ac61_65j_base + '#page=70',
-          'Systems and Equipment Malfunctions': ac61_65j_base + '#page=72',
-          'Emergency Equipment and Survival Gear': ac61_65j_base + '#page=74',
-          'After Landing, Parking, and Securing': ac61_65j_base + '#page=76',
-          'Weather Information': ac61_65j_base + '#page=13',
-          'Pilotage and Dead Reckoning': ac61_65j_base + '#page=78',
-          'Navigation Systems and Radar Services': ac61_65j_base + '#page=80',
-          'Diversion': ac61_65j_base + '#page=82',
-          'Lost Procedures': ac61_65j_base + '#page=84',
-          'Basic Instrument Maneuvers': ac61_65j_base + '#page=86',
-          'Night Operations': ac61_65j_base + '#page=88',
-          'Checkride Preparation (Comprehensive Review of All Tasks)': ac61_65j_base,
+        // Map each task to its ACS reference and direct PDF link (leave blank if not applicable)
+        const acsMap = {
+          'Engine Starting': {ref: 'PA.IV.A.S1', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=47'},
+          'Taxiing': {ref: 'PA.IV.A.S2', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=48'},
+          'Traffic Patterns': {ref: 'PA.IV.A.S3', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=49'},
+          'Normal Takeoff and Climb': {ref: 'PA.VI.A', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=61'},
+          'Normal Approach and Landing': {ref: 'PA.VI.B', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=62'},
+          'Steep Turns': {ref: 'PA.VIII.A', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=70'},
+          'Ground Reference Maneuvers': {ref: 'PA.VIII.B', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=71'},
+          'Maneuvering During Slow Flight': {ref: 'PA.VII.A', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=66'},
+          'Power-Off Stalls': {ref: 'PA.VII.B', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=67'},
+          'Power-On Stalls': {ref: 'PA.VII.C', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=68'},
+          'Spin Awareness': {ref: 'PA.VII.D', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=69'},
+          'Forward Slip to a Landing': {ref: 'PA.VI.C', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=63'},
+          'Go-Around/Rejected Landing': {ref: 'PA.VI.D', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=64'},
+          'Soft-Field Takeoff and Climb': {ref: 'PA.VI.E', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=65'},
+          'Soft-Field Approach and Landing': {ref: 'PA.VI.F', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=66'},
+          'Short-Field Takeoff and Maximum Performance Climb': {ref: 'PA.VI.G', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=67'},
+          'Short-Field Approach and Landing': {ref: 'PA.VI.H', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=68'},
+          'Emergency Descent': {ref: 'PA.XI.A', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=80'},
+          'Emergency Approach and Landing': {ref: 'PA.XI.B', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=81'},
+          'Systems and Equipment Malfunctions': {ref: 'PA.XI.C', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=82'},
+          'Emergency Equipment and Survival Gear': {ref: '', link: ''},
+          'After Landing, Parking, and Securing': {ref: '', link: ''},
+          'Pilotage and Dead Reckoning': {ref: 'PA.IX.A', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=74'},
+          'Navigation Systems and Radar Services': {ref: 'PA.IX.B', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=75'},
+          'Diversion': {ref: 'PA.IX.C', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=76'},
+          'Lost Procedures': {ref: 'PA.IX.D', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=77'},
+          'Basic Instrument Maneuvers': {ref: 'PA.X.A', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=78'},
+          'Night Operations': {ref: 'PA.XII.A', link: 'https://www.faa.gov/sites/faa.gov/files/training_testing/testing/acs/private_pilot_airplane_acs.pdf#page=84'},
+          'Checkride Preparation (Comprehensive Review of All Tasks)': {ref: '', link: ''},
+          // Add more mappings as needed
         };
-        // Find the best match for the lesson/task title
-        let ac6165j = {ref: 'AC 61-65J', link: ac61_65j_base};
-        for (const key in ac61_65j_links) {
-          if (taskTitle && taskTitle.toLowerCase().includes(key.toLowerCase().replace(/\(.+\)/,''))) {
-            ac6165j = {ref: 'AC 61-65J', link: ac61_65j_links[key]};
-            break;
-          }
-        }
-        if (!standards.some(s => s.ref === 'AC 61-65J')) {
-          standards = [ac6165j, ...standards];
-        }
-        if (!standards.length) {
-          standards = [ac6165j];
+        const acs = acsMap[taskTitle] || {ref: '', link: ''};
+        if (acs.ref && acs.link) {
+          standards = [{ref: acs.ref, link: acs.link}];
+        } else {
+          standards = [];
         }
         return {
           id: `s${stageIndex + 1}-${lessonIndex + 1}`,
