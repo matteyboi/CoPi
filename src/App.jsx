@@ -970,11 +970,14 @@ function App() {
     if (!instructorMode) {
       return;
     }
-    // Validate instructor hours (FAA format: number with up to 1 decimal)
-    const hoursPattern = /^\d+(\.\d)?$/;
-    if (!instructorHours || !hoursPattern.test(instructorHours)) {
-      setHoursError('Enter hours in FAA format (e.g., 1.4)');
-      return;
+    // Only require hours if saving non-planned statuses
+    const savingOnlyPlanned = plannedDraftSessionIds.length > 0 && Object.keys(sessionDraftStatuses).length === 0 && Object.keys(sessionDraftRatings).length === 0;
+    if (!savingOnlyPlanned) {
+      const hoursPattern = /^\d+(\.\d)?$/;
+      if (!instructorHours || !hoursPattern.test(instructorHours)) {
+        setHoursError('Enter hours in FAA format (e.g., 1.4)');
+        return;
+      }
     }
     setHoursError('');
     // Clone the draft statuses so we can update them before saving
@@ -2032,11 +2035,12 @@ function App() {
 
         {activeTab === 'dashboard' && (
           <section className="tab-content">
-            <section className="ai-teaching-card">
-              <div className="ai-teaching-header">
-                <h3>Coach CoPi</h3>
+            <section className="copi-console-card">
+              <div className="copi-console-header">
+                <h3>CoPi Console</h3>
               </div>
-              <div className="ai-teaching-body">
+              <div className="copi-console-body">
+                {/* AI Teaching Tips */}
                 {briefingLoading ? (
                   <div className="briefing-loading">
                     <span className="briefing-loading-dot" />
@@ -2059,23 +2063,24 @@ function App() {
                     )}
                   </>
                 ) : (
-                  <p className="ai-teaching-empty">Log lesson notes and ratings, and add planned lessons to receive AI-powered teaching tips for your next tasks.</p>
+                  <></>
                 )}
+                {/* Planned Lessons */}
+                <div className="copi-console-planned">
+                  <div className="planned-lessons-header">
+                    <h4 style={{margin:'18px 0 8px 0', color:'#7dd3fc'}}>Planned Lessons</h4>
+                  </div>
+                  {plannedLessons.length ? (
+                    <ul className="planned-lessons-list">
+                      {plannedLessons.map((session) => (
+                        <li key={session.id}>{session.title}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="planned-lessons-empty">Every great pilot starts with day one—add your first planned lesson to begin your journey!</p>
+                  )}
+                </div>
               </div>
-            </section>
-            <section className="planned-lessons-card">
-              <div className="planned-lessons-header">
-                <h3>Planned Lessons</h3>
-              </div>
-              {plannedLessons.length ? (
-                <ul className="planned-lessons-list">
-                  {plannedLessons.map((session) => (
-                    <li key={session.id}>{session.title}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="planned-lessons-empty">Every great pilot starts with day one—add your first planned lesson to begin your journey!</p>
-              )}
             </section>
             {/* Log Lesson Day UI removed as requested */}
 
@@ -2156,16 +2161,9 @@ function App() {
 
             {instructorMode ? (
               <div className="syllabus-save-row" style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-                <div style={{ marginLeft: '10%' }}>
+                <div style={{ marginLeft: '10%', marginTop: '24px' }}>
                   <div style={{ position: 'relative', display: 'inline-block' }}>
-                    <button
-                      type="button"
-                      className="endorsement-photo-dropdown-btn syllabus-row-move"
-                      style={{ marginRight: 8 }}
-                      onClick={() => setShowEndorsementsDropdown((open) => !open)}
-                    >
-                      Endorsements
-                    </button>
+                    {/* Endorsements dropdown only, pill removed */}
                     {showEndorsementsDropdown && (
                       <ul className="endorsements-dropdown">
                         {ENDORSEMENTS_DROPDOWN_OPTIONS.map((option) => (
@@ -2207,7 +2205,7 @@ function App() {
             {/* Endorsements dropdown above Phase 1 */}
             <div className="endorsements-dropdown-row" style={{ maxWidth: 320, margin: '16px 0 12px 32px', whiteSpace: 'nowrap', position: 'relative', left: 0 }}>
               <label className="endorsements-dropdown-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', fontSize: '1.08rem' }}>
-                <div style={{ position: 'relative', marginLeft: 0, display: 'inline-flex', alignItems: 'center' }}>
+                <div style={{ position: 'relative', marginLeft: '5%', display: 'inline-flex', alignItems: 'center' }}>
                   <button
                     type="button"
                     className="endorsements-dropdown-toggle"

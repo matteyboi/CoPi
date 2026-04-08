@@ -27,7 +27,7 @@ The API key has been present in local `.env` and appeared in terminal output pre
    - Revoke the old key.
    - Create a new key.
 2. Update local secrets:
-   - Replace `OPENAI_API_KEY` value in `.env`.
+   - Replace `OPENAI_API_KEY` value in `.enre
 3. Validate runtime:
    - Restart backend/frontend dev processes.
    - Verify `GET /api/health` returns `aiConfigured: true`.

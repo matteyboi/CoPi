@@ -20,10 +20,10 @@ export const ORAL_KNOWLEDGE_TASKS = [
 
 const CANONICAL_STAGES = [
   {
-    title: 'Phase 1 — Beginner: Foundations, Preflight & Basic Maneuvers',
+    title: 'Phase 1 - Foundations, Preflight & Basic Maneuvers',
     tasks: [
       'Engine Starting',
-      'Taxiing (ASEL, AMEL)',
+      'Taxiing',
       'Traffic Patterns',
       'Normal Takeoff and Climb',
       'Normal Approach and Landing',
