@@ -1,17 +1,13 @@
-// Checklist state for Phase 1 (Medical, TSA Endorsement, IACRA)
-const PHASE1_CHECKLIST_LABELS = ['Medical', 'TSA Endorsement', 'IACRA'];
 
-function getInitialChecklistState() {
-  if (typeof window !== 'undefined') {
-    try {
-      const saved = window.localStorage.getItem('phase1-checklist');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
+
+// Endorsements dropdown options
+const ENDORSEMENTS_DROPDOWN_OPTIONS = [
+  'Medical',
+  'TSA Endorsement',
+  'IACRA',
+];
+
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import './instructorHours.css';
@@ -107,19 +103,24 @@ const buildFallbackThreadTitle = (messages) => {
 };
 
 function App() {
-    // Phase 1 checklist state (generic checkboxes)
-    const [checklistState, setChecklistState] = React.useState(getInitialChecklistState);
-    const handleChecklistCheck = (item) => {
-      setChecklistState((prev) => {
-        const next = { ...prev, [item]: !prev[item] };
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem('phase1-checklist', JSON.stringify(next));
-        }
-        return next;
-      });
+    const [endorsementChecks, setEndorsementChecks] = useState({
+      Medical: false,
+      'TSA Endorsement': false,
+      IACRA: false,
+    });
+  const [selectedEndorsement, setSelectedEndorsement] = useState('');
+
+    // Dropdown state for endorsements
+    const [showEndorsementsDropdown, setShowEndorsementsDropdown] = useState(false);
+    // Handler for selecting an endorsement
+    const handleEndorsementSelect = (option) => {
+      setShowEndorsementsDropdown(false);
+      // TODO: Implement what happens when an endorsement is selected
+      setNoteToastMessage(`Selected endorsement: ${option}`);
     };
+
     // All checklist boxes complete?
-    const allChecklistComplete = PHASE1_CHECKLIST_LABELS.every((label, idx) => checklistState[`box${idx}`]);
+
   // Instructor flight hours input (FAA format, e.g., 1.4)
   const [instructorHours, setInstructorHours] = useState('');
   // Checklist state removed (IACRA)
@@ -2156,14 +2157,23 @@ function App() {
             {instructorMode ? (
               <div className="syllabus-save-row" style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
                 <div style={{ marginLeft: '10%' }}>
-                  <button
-                    type="button"
-                    className="endorsement-photo-dropdown-btn syllabus-row-move"
-                    style={{ marginRight: 8 }}
-                    // Add onClick handler if needed for dropdown
-                  >
-                    Endorsements
-                  </button>
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <button
+                      type="button"
+                      className="endorsement-photo-dropdown-btn syllabus-row-move"
+                      style={{ marginRight: 8 }}
+                      onClick={() => setShowEndorsementsDropdown((open) => !open)}
+                    >
+                      Endorsements
+                    </button>
+                    {showEndorsementsDropdown && (
+                      <ul className="endorsements-dropdown">
+                        {ENDORSEMENTS_DROPDOWN_OPTIONS.map((option) => (
+                          <li key={option} onClick={() => handleEndorsementSelect(option)}>{option}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
                 <div className="instructor-hours-group">
                   <div className="hours-bubble" style={{ marginRight: 0 }}>
@@ -2193,13 +2203,63 @@ function App() {
               </div>
             ) : null}
 
-            {/* Checklist is now rendered inside Phase 1 dropdown above Engine Starting */}
+
+            {/* Endorsements dropdown above Phase 1 */}
+            <div className="endorsements-dropdown-row" style={{ maxWidth: 320, margin: '16px 0 12px 32px', whiteSpace: 'nowrap', position: 'relative', left: 0 }}>
+              <label className="endorsements-dropdown-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', fontSize: '1.08rem' }}>
+                <div style={{ position: 'relative', marginLeft: 0, display: 'inline-flex', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="endorsements-dropdown-toggle"
+                    style={{
+                      padding: '0 16px',
+                      borderRadius: 8,
+                      border: '1px solid #38bdf8',
+                      background: '#0b1220',
+                      color: '#dbeafe',
+                      fontWeight: 500,
+                      fontSize: '1.08rem',
+                      cursor: 'pointer',
+                      minWidth: 120,
+                      textAlign: 'left',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      height: 40,
+                    }}
+                    onClick={() => setShowEndorsementsDropdown((v) => !v)}
+                  >
+                    <span style={{fontWeight:700,letterSpacing:'0.03em',color:'#38bdf8'}}>
+                      Endorsements
+                    </span>
+                    <span style={{ marginLeft: 8, fontSize: '1.1em', display: 'inline-block', transform: showEndorsementsDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
+                  </button>
+                  {showEndorsementsDropdown && (
+                    <ul style={{ position: 'absolute', top: '110%', left: '5%', zIndex: 10, background: '#1e293b', border: '1px solid #38bdf8', borderRadius: 8, minWidth: '75vw', width: '75vw', maxWidth: '75vw', padding: 0, margin: 0, listStyle: 'none', boxShadow: '0 2px 8px #0008' }}>
+                      {['Medical', 'TSA Endorsement', 'IACRA'].map((option) => (
+                        <li key={option} style={{ display: 'flex', alignItems: 'center', padding: '4px 0' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!endorsementChecks[option]}
+                            onChange={() => setEndorsementChecks(prev => ({ ...prev, [option]: !prev[option] }))}
+                            style={{ marginRight: 10, accentColor: '#38bdf8', width: 18, height: 18, cursor: 'pointer' }}
+                            id={`endorsement-checkbox-${option}`}
+                          />
+                          <label htmlFor={`endorsement-checkbox-${option}`} style={{ color: '#dbeafe', fontSize: '1rem', cursor: 'pointer', userSelect: 'none' }}>
+                            {option}
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </label>
+            </div>
 
             <div className="phase-grid">
               {/* Render phases, and insert Solo checkbox after Phase 2 and before Phase 3 */}
               {phasesWithProgress.map((phase, index) => {
                 // Insert Solo checkbox after Phase 2 and before Phase 3
-                const isPhase1 = phase.title && phase.title.toLowerCase().includes('phase 1');
+                const isPhase1 = phase.title && phase.title.toLowerCase().includes('phase 1 - foundations, preflight & basic maneuvers');
                 const isPhase2 = phase.title && phase.title.toLowerCase().includes('phase 2');
                 const isPhase3 = phase.title && phase.title.toLowerCase().includes('phase 3');
                 let soloChecklist = null;
@@ -2211,66 +2271,24 @@ function App() {
                   isPhase3
                 ) {
                   // Checklist for pre-solo endorsements
-                  const SOLO_CHECKLIST_LABELS = [
-                    'Pre-Solo Knowledge Test',
-                    'Pre-Solo Flight Training',
-                    'Training in Make & Model',
-                  ];
+                  const SOLO_CHECKLIST_LABELS = [];
                   // Determine if Phase 2 is complete (all sessions have status 'completed')
                   const phase2 = phasesWithProgress.find(p => p.title && p.title.toLowerCase().includes('phase 2'));
                   const phase2Complete = phase2 && phase2.sessions.every(s => s.status === 'completed');
-                  soloChecklist = (
-                    <div className="syllabus-checklist-card" style={{marginBottom: 0}}>
-                      <div className="syllabus-checklist-row">
-                        {SOLO_CHECKLIST_LABELS.map((label, idx) => (
-                          <label className="syllabus-checklist-item" key={label}>
-                            <input
-                              type="checkbox"
-                              checked={!!checklistState[`soloCheck${idx}`]}
-                              onChange={() => {
-                                if (!phase2Complete) return;
-                                setChecklistState(prev => {
-                                  const next = { ...prev, [`soloCheck${idx}`]: !prev[`soloCheck${idx}`] };
-                                  if (typeof window !== 'undefined') {
-                                    window.localStorage.setItem('phase1-checklist', JSON.stringify(next));
-                                  }
-                                  return next;
-                                });
-                              }}
-                              style={{ width: '18px', height: '18px', accentColor: '#38bdf8', cursor: phase2Complete ? 'pointer' : 'not-allowed', opacity: phase2Complete ? 1 : 0.5 }}
-                              aria-label={label}
-                              disabled={!phase2Complete}
-                            />
-                            {label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                  const allSoloChecklistComplete = [0,1,2].every(idx => !!checklistState[`soloCheck${idx}`]);
+                  soloChecklist = null;
+                  // ...existing code...
                   soloCheckbox = (
-                    <div className="solo-checkbox-row">
-                      <label className="solo-checkbox-label">
+                    <div className="solo-checkbox-row" style={{ maxWidth: 320, margin: '0 auto', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                      <label className="solo-checkbox-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }}>
                         <input
                           type="checkbox"
                           className="solo-checkbox-input"
-                          checked={!!checklistState.solo}
-                          onChange={() => {
-                            if (!allSoloChecklistComplete) return;
-                            setChecklistState(prev => {
-                              const next = { ...prev, solo: !prev.solo };
-                              if (typeof window !== 'undefined') {
-                                window.localStorage.setItem('phase1-checklist', JSON.stringify(next));
-                              }
-                              return next;
-                            });
-                          }}
-                          style={{ accentColor: '#f59e42', width: 22, height: 22, marginRight: 10, boxShadow: '0 2px 8px #f59e4233', cursor: allSoloChecklistComplete ? 'pointer' : 'not-allowed', opacity: allSoloChecklistComplete ? 1 : 0.5 }}
+                          style={{ accentColor: '#f59e42', width: 20, height: 20, marginRight: 8, boxShadow: '0 2px 8px #f59e4233', cursor: phase2Complete ? 'pointer' : 'not-allowed', opacity: phase2Complete ? 1 : 0.5 }}
                           aria-label="Solo"
-                          disabled={!allSoloChecklistComplete}
+                          disabled={!phase2Complete}
                         />
-                        <span className="solo-checkbox-text">
-                          ✈️ <span style={{fontWeight:700,letterSpacing:'0.04em',color:'#f59e42'}}>Solo</span>
+                          <span className="solo-checkbox-text" style={{ fontSize: '1.08rem', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                          <span style={{fontWeight:700,letterSpacing:'0.03em',color:'#f59e42'}}>First Solo</span>
                         </span>
                       </label>
                     </div>
@@ -2331,15 +2349,14 @@ function App() {
                   );
                 }
                 // ...existing code for other phases...
-                // Insert Solo checkbox between Phase 1 and Phase 2
+                // Insert Solo checkbox between Phase 1 - Foundations, Preflight & Basic Maneuvers and Phase 2
                 let stageState, isLocked, isExpanded, nonBlankSessions;
                 stageState = phaseLockStates[index] ?? { isLocked: false };
                 isLocked = stageState.isLocked;
                 // Lock Stage 2 unless ALL checklist items are checked (none remain)
                 if (
                   phase.title &&
-                  phase.title.trim().toLowerCase().startsWith('stage 2') &&
-                  !allChecklistComplete
+                  phase.title.trim().toLowerCase().startsWith('stage 2')
                 ) {
                   isLocked = true;
                 }
@@ -2365,8 +2382,8 @@ function App() {
                           aria-expanded={isExpanded}
                         >
                           <p className="phase-title" style={{ margin: 0 }}>{phase.title}</p>
-                          {isLocked && phase.title && phase.title.trim().toLowerCase().startsWith('stage 2') && (!allChecklistComplete || !allPhase1Complete) ? (
-                            <p className="phase-locked-note">Complete all Phase 1 tasks before continuing to Phase 2.</p>
+                          {isLocked && phase.title && phase.title.trim().toLowerCase().startsWith('stage 2') && (!allPhase1Complete) ? (
+                            <p className="phase-locked-note">Complete all Phase 1 - Foundations, Preflight & Basic Maneuvers tasks before continuing to Phase 2.</p>
                           ) : isLocked ? (
                             <p className="phase-locked-note">Complete the previous stage to unlock.</p>
                           ) : null}
@@ -2385,48 +2402,7 @@ function App() {
                         {isExpanded ? (
                           <div className={`session-list${isLocked ? ' phase-content-locked' : ''}`}
                             style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
-                            {/* No checklist items remain for Phase 1 */}
-                            {isPhase1 && (
-                              <div className="syllabus-checklist-card">
-                                <div className="syllabus-checklist-row">
-                                  {PHASE1_CHECKLIST_LABELS.map((label, idx) => (
-                                    <label className="syllabus-checklist-item" key={label}>
-                                      <input
-                                        type="checkbox"
-                                        checked={!!checklistState[`box${idx}`]}
-                                        onChange={() => handleChecklistCheck(`box${idx}`)}
-                                        style={{ width: '18px', height: '18px', accentColor: '#38bdf8', cursor: 'pointer' }}
-                                        aria-label={label}
-                                        disabled={isLocked}
-                                      />
-                                      {label}
-                                    </label>
-                                  ))}
-                                  {allChecklistComplete && (
-                                    <span style={{ fontWeight: 500, color: '#22c55e' }}>
-                                      Complete
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            {nonBlankSessions.map((session) => (
-                              <div className="session-row" key={session.id} style={{ position: 'relative' }}>
-                                <div className="session-main">
-                                  <div className="session-copy">
-                                    <div className="session-title-row">
-                                      <h3>{session.title}</h3>
-                                    </div>
-                                    {/* Standards Link Icon (bottom right) */}
-                                    {Array.isArray(session.standards) && session.standards.length > 0 && (() => {
-                                      // Prefer AC link if present, otherwise first
-                                      const ac = session.standards.find(std => std.ref.startsWith('AC'));
-                                      // ...existing code...
-                                    })()}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                            {/* ...rest of session list... */}
                           </div>
                         ) : null}
                       </article>
@@ -2447,8 +2423,8 @@ function App() {
                       aria-expanded={isExpanded}
                     >
                       <p className="phase-title" style={{ margin: 0 }}>{phase.title}</p>
-                      {isLocked && phase.title && phase.title.trim().toLowerCase().startsWith('stage 2') && (!allChecklistComplete || !allPhase1Complete) ? (
-                        <p className="phase-locked-note">Complete all Phase 1 tasks before continuing to Phase 2.</p>
+                      {isLocked && phase.title && phase.title.trim().toLowerCase().startsWith('stage 2') && (!allPhase1Complete) ? (
+                        <p className="phase-locked-note">Complete all Phase 1 - Foundations, Preflight & Basic Maneuvers tasks before continuing to Phase 2.</p>
                       ) : isLocked ? (
                         <p className="phase-locked-note">Complete the previous stage to unlock.</p>
                       ) : null}
@@ -2467,31 +2443,8 @@ function App() {
                     {isExpanded ? (
                       <div className={`session-list${isLocked ? ' phase-content-locked' : ''}`}
                         style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
-                        {/* No checklist items remain for Phase 1 */}
-                        {isPhase1 && (
-                          <div className="syllabus-checklist-card">
-                            <div className="syllabus-checklist-row">
-                              {PHASE1_CHECKLIST_LABELS.map((label, idx) => (
-                                <label className="syllabus-checklist-item" key={label}>
-                                  <input
-                                    type="checkbox"
-                                    checked={!!checklistState[`box${idx}`]}
-                                    onChange={() => handleChecklistCheck(`box${idx}`)}
-                                    style={{ width: '18px', height: '18px', accentColor: '#38bdf8', cursor: 'pointer' }}
-                                    aria-label={label}
-                                    disabled={isLocked}
-                                  />
-                                  {label}
-                                </label>
-                              ))}
-                              {allChecklistComplete && (
-                                <span style={{ fontWeight: 500, color: '#22c55e' }}>
-                                  Complete
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                        {/* No checklist items remain for Phase 1 - Foundations, Preflight & Basic Maneuvers */}
+                        {/* Phase 1 checklist removed as requested */}
                         {nonBlankSessions.map((session) => (
                           <div className="session-row" key={session.id} style={{ position: 'relative' }}>
                             <div className="session-main">
