@@ -690,17 +690,28 @@ function App() {
   const phaseProgress = useMemo(() => {
       const total = phasesWithProgress.reduce((sum, phase) => sum + phase.sessions.length, 0);
       let cumulative = 0;
+      const minOffset = 14; // percent offset for the first marker (increase to move right)
+      const maxOffset = 100 - minOffset;
+      const phaseCount = phasesWithProgress.length;
 
-      return phasesWithProgress.map((phase) => {
+      return phasesWithProgress.map((phase, idx) => {
         const completedCount = phase.sessions.filter((session) => session.status === 'completed').length;
         const totalCount = phase.sessions.length;
         cumulative += totalCount;
+
+        // Spread markers from minOffset to maxOffset
+        let positionPercent = 0;
+        if (phaseCount > 1) {
+          positionPercent = minOffset + ((maxOffset) * idx / (phaseCount - 1));
+        } else {
+          positionPercent = 50;
+        }
 
         return {
           id: phase.id,
           title: phase.title,
           isCompleted: totalCount > 0 && completedCount === totalCount,
-          positionPercent: total > 0 ? Math.round((cumulative / total) * 100) : 0,
+          positionPercent,
         };
       });
     }, [phasesWithProgress]);
@@ -927,6 +938,17 @@ function App() {
         const { [sessionId]: _, ...rest } = currentStatuses;
         return rest;
       }
+      // If setting to 'in-progress', clear 'in-progress' from all other sessions
+      if (nextStatus === 'in-progress') {
+        const newStatuses = { ...currentStatuses };
+        Object.keys(newStatuses).forEach((id) => {
+          if (id !== sessionId && newStatuses[id] === 'in-progress') {
+            newStatuses[id] = null;
+          }
+        });
+        newStatuses[sessionId] = 'in-progress';
+        return newStatuses;
+      }
       return {
         ...currentStatuses,
         [sessionId]: nextStatus,
@@ -952,6 +974,13 @@ function App() {
       ...currentRatings,
       [sessionId]: rating,
     }));
+    // If 5 stars, immediately set draft status to completed for instant tab highlight
+    if (rating === 5) {
+      setSessionDraftStatuses((currentStatuses) => ({
+        ...currentStatuses,
+        [sessionId]: 'completed',
+      }));
+    }
   };
 
   const togglePlannedDraftStatus = (sessionId) => {
