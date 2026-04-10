@@ -1,4 +1,5 @@
 // @ts-nocheck
+const fetch = require('node-fetch');
 const express = require('express');
 const dotenv = require('dotenv');
 
@@ -36,6 +37,8 @@ function buildSystemPrompt(context) {
     }
     if (context.checklistProgress) lines.push(`Checklist progress: ${context.checklistProgress}`);
     if (context.notes) lines.push(`Student notes: ${String(context.notes).slice(0, 600)}`);
+    // Add explicit phase progression rule for Phase 2 unlock
+    lines.push('IMPORTANT: To unlock Phase 2, you must complete all Phase 1 tasks and check off Medical, TSA, and IACRA, then save. If Phase 2 is still locked, prompt the user to complete and save all these items.');
   } else {
     lines.push('Current lesson context: disabled by user (general coaching mode).');
   }

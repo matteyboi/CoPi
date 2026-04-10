@@ -1,0 +1,42 @@
+.hamburger-btn {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  z-index: 10000;
+}
+.hamburger-btn span {
+  display: block;
+  width: 28px;
+  height: 3px;
+  background: #38bdf8;
+  border-radius: 2px;
+  transition: all 0.2s;
+}
+.hamburger-dropdown {
+  background: #1e293b;
+  border: 1.5px solid #38bdf8;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(2, 6, 23, 0.18);
+  padding: 12px 0;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.hamburger-dropdown button {
+  background: none;
+  border: none;
+  color: #e0f2fe;
+  padding: 12px 24px;
+  text-align: left;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.hamburger-dropdown button:hover {
+  background: #334155;
+}

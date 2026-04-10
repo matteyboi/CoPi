@@ -1,170 +1,179 @@
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+
+// Status order and labels for session status buttons
+const statusOrder = ['planned', 'in-progress', 'completed'];
+const statusLabel = {
+  planned: 'Planned',
+  'in-progress': 'In Progress',
+  completed: 'Completed',
+};
+// --- Utility stubs for missing functions/constants ---
+// Modal helpers (implement these in your component as needed)
+// function openConfirmModal(props) { ... }
+// function openPromptModal(props) { ... }
+
+// Chat thread helpers
+function createDefaultChatThread() {
+  return {
+    id: `chat-${Date.now()}`,
+    title: 'Conversation',
+    pinned: false,
+    updatedAt: new Date().toISOString(),
+    messages: [],
+  };
+}
+
+// Chat title helpers
+function isGenericChatTitle(title) {
+  return !title || title === 'Conversation' || /^New chat/i.test(title);
+}
+
+function buildFallbackThreadTitle(messages) {
+  // Use the first user message as a fallback title
+  const firstUserMsg = (messages || []).find((m) => m.role === 'user');
+  return firstUserMsg ? firstUserMsg.content.slice(0, 32) : 'Conversation';
+}
+
+function sanitizeThreadTitle(title, fallback) {
+  if (!title) return fallback || 'Conversation';
+  return String(title).replace(/["'`]/g, '').trim().slice(0, 32) || fallback || 'Conversation';
+}
 
 
-// Endorsements dropdown options
-const ENDORSEMENTS_DROPDOWN_OPTIONS = [
-  'Medical',
-  'TSA Endorsement',
-  'IACRA',
-];
 
-
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// Max photo size constant
+const STUDENT_PHOTO_MAX_SIZE_BYTES = 3 * 1024 * 1024; // 3MB
+import {
+  initializeData,
+  oralSessions as defaultOralSessions,
+  progressHistory as defaultProgressHistory,
+  syllabus as defaultSyllabus
+} from './data/syllabusData';
 import './App.css';
 import './instructorHours.css';
-import copiLogo from './7F5D28DA-9DA4-47A8-83DA-F88671CB6067-removebg-preview.png';
-import logoAI from './Matched_Design_Style_2-removebg-preview.png';
-import { initializeData, oralSessions as defaultOralSessions, progressHistory as defaultProgressHistory, syllabus as defaultSyllabus } from './data/syllabusData';
 
-const STORAGE_KEY = 'ai-flight-syllabus-progress-v1';
-const NOTES_STORAGE_KEY = 'ai-flight-syllabus-notes-v1';
-const CHECKLIST_STORAGE_KEY = 'ai-flight-syllabus-checklist-v1';
-const RATING_STORAGE_KEY = 'ai-flight-syllabus-rating-v1';
-const CHAT_THREADS_STORAGE_KEY = 'ai-flight-syllabus-chat-threads-v1';
-const ACTIVE_CHAT_THREAD_STORAGE_KEY = 'ai-flight-syllabus-chat-active-thread-v1';
-const LEGACY_CHAT_STORAGE_KEY = 'ai-flight-syllabus-chat-v1';
-const CHAT_CONTEXT_STORAGE_KEY = 'ai-flight-syllabus-chat-context-v1';
-const STUDENT_NAME_STORAGE_KEY = 'ai-flight-syllabus-student-name-v1';
-const STUDENT_PROFILES_STORAGE_KEY = 'ai-flight-syllabus-student-profiles-v1';
-const STUDENT_PHOTO_MAX_SIZE_BYTES = 3 * 1024 * 1024;
-const LESSON_DAYS_STORAGE_KEY = 'ai-flight-syllabus-lesson-days-v1';
-const INSTRUCTOR_PIN_STORAGE_KEY = 'ai-flight-syllabus-instructor-pin-v1';
-const BRIEFING_CACHE_STORAGE_KEY = 'ai-flight-syllabus-briefing-v1';
-const CLEAR_UNDO_TIMEOUT_MS = 5000;
-
-const statusLabel = {
-  completed: 'Completed',
-  'in-progress': 'In Progress',
-  planned: 'Planned',
-};
-
-const statusOrder = ['planned', 'in-progress', 'completed'];
-
-const GENERIC_CHAT_TITLES = new Set(['Conversation', 'New chat']);
-
-const createDefaultChatThread = () => ({
-  id: 'chat-default',
-  title: 'Conversation',
-  pinned: false,
-  updatedAt: new Date().toISOString(),
-  messages: [],
-});
-
-const normalizeStudentKey = (name) => String(name || '').trim().toLowerCase() || 'default-student';
-
-const readStudentProfiles = () => {
-  if (typeof window === 'undefined') {
-    return {};
-  }
-
-  try {
-    return JSON.parse(window.localStorage.getItem(STUDENT_PROFILES_STORAGE_KEY) ?? '{}');
-  } catch {
-    return {};
-  }
-};
-
-const writeStudentProfiles = (profiles) => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.setItem(STUDENT_PROFILES_STORAGE_KEY, JSON.stringify(profiles));
-};
-
-const isGenericChatTitle = (title) => GENERIC_CHAT_TITLES.has(title) || /^Chat \d+$/.test(String(title || ''));
-
-const sanitizeThreadTitle = (title, fallback = 'Conversation') => {
-  const nextTitle = String(title || '')
-    .replace(/\s+/g, ' ')
-    .replace(/^['"“”‘’]+|['"“”‘’]+$/g, '')
-    .trim()
-    .slice(0, 48);
-
-  return nextTitle || fallback;
-};
-
-const buildFallbackThreadTitle = (messages) => {
-  const firstUserMessage = messages.find((message) => message.role === 'user' && message.content)?.content;
-  if (!firstUserMessage) {
-    return 'Conversation';
-  }
-
-  const compact = String(firstUserMessage)
-    .replace(/\s+/g, ' ')
-    .replace(/[?.!].*$/, '')
-    .trim();
-
-  if (!compact) {
-    return 'Conversation';
-  }
-
-  const words = compact.split(' ').slice(0, 6).join(' ');
-  return sanitizeThreadTitle(words, 'Conversation');
-};
+import { normalizeStudentKey } from './utils/normalizeStudentKey';
+import { readStudentProfiles, writeStudentProfiles } from './utils/studentProfiles';
+import {
+  STORAGE_KEY,
+  NOTES_STORAGE_KEY,
+  CHECKLIST_STORAGE_KEY,
+  RATING_STORAGE_KEY,
+  CHAT_THREADS_STORAGE_KEY,
+  ACTIVE_CHAT_THREAD_STORAGE_KEY,
+  LEGACY_CHAT_STORAGE_KEY,
+  CHAT_CONTEXT_STORAGE_KEY,
+  STUDENT_NAME_STORAGE_KEY,
+  STUDENT_PROFILES_STORAGE_KEY,
+  LESSON_DAYS_STORAGE_KEY,
+  BRIEFING_CACHE_STORAGE_KEY,
+  INSTRUCTOR_PIN_STORAGE_KEY
+} from './storageKeys';
 
 function App() {
-    const [endorsementChecks, setEndorsementChecks] = useState({
-      Medical: false,
-      'TSA Endorsement': false,
-      IACRA: false,
-    });
+
+
+
+
+              // For progress history expansion
+              const [expandedHistoryId, setExpandedHistoryId] = useState(null);
+
+              // ...existing code...
+
+              // Place this after phasesWithProgress is defined
+              // Helper: are all Phase 1 tasks complete?
+              let allPhase1Complete = false;
+              let phase1Idx = -1;
+              // This must be after phasesWithProgress is defined
+              // (so after the useMemo for phasesWithProgress)
+            // Persistent Cross Country Solo checkbox state
+            const [crossCountrySoloChecked, setCrossCountrySoloChecked] = useState(() => {
+              if (typeof window !== 'undefined') {
+                try {
+                  const saved = window.localStorage.getItem('cross-country-solo-checked');
+                  return saved ? JSON.parse(saved) : false;
+                } catch {
+                  return false;
+                }
+              }
+              return false;
+            });
+            const handleCrossCountrySoloCheck = () => {
+              setCrossCountrySoloChecked((prev) => {
+                const next = !prev;
+                if (typeof window !== 'undefined') {
+                  window.localStorage.setItem('cross-country-solo-checked', JSON.stringify(next));
+                }
+                return next;
+              });
+            };
+          const studentPhotoInputRef = useRef(null);
+        // --- MISSING REFS ---
+        const hasInitializedStudentProfileRef = useRef(false);
+        const chatMessagesRef = useRef(null);
+        const wasNearBottomRef = useRef(false);
+        const previousThreadIdRef = useRef(null);
+
+        // --- MISSING STATE ---
+        const [instructorMode, setInstructorMode] = useState(false);
+        const [instructorHours, setInstructorHours] = useState('');
+        const [pinInput, setPinInput] = useState('');
+        const [pinConfirmInput, setPinConfirmInput] = useState('');
+        const [pinError, setPinError] = useState('');
+        const [instructorPinModal, setInstructorPinModal] = useState(null);
+        const [briefingLoading, setBriefingLoading] = useState(false);
+
+        // --- CONSTANTS ---
+        const CLEAR_UNDO_TIMEOUT_MS = 5000;
+      const importProfilesInputRef = useRef(null);
+    const clearUndoTimeoutRef = useRef(null);
+  const [endorsementChecks, setEndorsementChecks] = useState({
+    Medical: false,
+    'TSA Endorsement': false,
+    IACRA: false,
+  });
   const [selectedEndorsement, setSelectedEndorsement] = useState('');
-
-    // Dropdown state for endorsements
-    const [showEndorsementsDropdown, setShowEndorsementsDropdown] = useState(false);
-    // Handler for selecting an endorsement
-    const handleEndorsementSelect = (option) => {
-      setShowEndorsementsDropdown(false);
-      // TODO: Implement what happens when an endorsement is selected
-      setNoteToastMessage(`Selected endorsement: ${option}`);
-    };
-
-    // All checklist boxes complete?
-
-  // Instructor flight hours input (FAA format, e.g., 1.4)
-  const [instructorHours, setInstructorHours] = useState('');
-  // Checklist state removed (IACRA)
-  // (No checklist state remains)
-      const [hoursError, setHoursError] = useState('');
-    // Stage 6 checkboxes state (must be outside map)
-    const [stage6Checked, setStage6Checked] = React.useState(() => {
-      if (typeof window !== 'undefined') {
-        try {
-          const saved = window.localStorage.getItem('stage6-checks');
-          return saved ? JSON.parse(saved) : {};
-        } catch {
-          return {};
-        }
+  const [showEndorsementsDropdown, setShowEndorsementsDropdown] = useState(false);
+  const handleEndorsementSelect = (option) => {
+    setShowEndorsementsDropdown(false);
+    setNoteToastMessage(`Selected endorsement: ${option}`);
+  };
+  // Cleaned: Only one progressHistory state declaration allowed
+  const [hoursError, setHoursError] = useState('');
+  const [stage6Checked, setStage6Checked] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = window.localStorage.getItem('stage6-checks');
+        return saved ? JSON.parse(saved) : {};
+      } catch {
+        return {};
       }
-      return {};
+    }
+    return {};
+  });
+  const handleStage6Check = (id) => {
+    setStage6Checked((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('stage6-checks', JSON.stringify(next));
+      }
+      return next;
     });
-
-    const handleStage6Check = (id) => {
-      setStage6Checked((prev) => {
-        const next = { ...prev, [id]: !prev[id] };
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem('stage6-checks', JSON.stringify(next));
-        }
-        return next;
-      });
-    };
+  };
   const [dataLoading, setDataLoading] = useState(true);
   const [syllabus, setSyllabus] = useState(defaultSyllabus);
   const [activeStudentName, setActiveStudentName] = useState(() => {
     if (typeof window === 'undefined') {
       return defaultSyllabus.student;
     }
-
     return window.localStorage.getItem(STUDENT_NAME_STORAGE_KEY) || defaultSyllabus.student;
   });
-  const [progressHistory, setProgressHistory] = useState(defaultProgressHistory);
   const [oralSessions, setOralSessions] = useState(defaultOralSessions);
-  
+  const [progressHistory, setProgressHistory] = useState(defaultProgressHistory);
   const [sessionStatuses, setSessionStatuses] = useState(() => {
     if (typeof window === 'undefined') {
       return {};
     }
-
     try {
       return JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}');
     } catch {
@@ -207,6 +216,7 @@ function App() {
     }
   });
   const [activeTab, setActiveTab] = useState('dashboard');
+  // All phases collapsed by default
   const [expandedStageIds, setExpandedStageIds] = useState({});
   const [chatThreads, setChatThreads] = useState(() => {
     if (typeof window === 'undefined') {
@@ -259,7 +269,10 @@ function App() {
   });
   const [chatInput, setChatInput] = useState('');
   const [isSendingChat, setIsSendingChat] = useState(false);
+  // Robust hamburger menu logic (from working demo)
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef(null);
+  const menuDropdownRef = useRef(null);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [showHelpPanel, setShowHelpPanel] = useState(false);
@@ -299,71 +312,10 @@ function App() {
       return JSON.parse(window.localStorage.getItem(LESSON_DAYS_STORAGE_KEY) ?? '[]');
     } catch { return []; }
   });
-  // ...existing code...
-  const [logDayNote, setLogDayNote] = useState('');
-  const [expandedHistoryId, setExpandedHistoryId] = useState(null);
-  const [instructorMode, setInstructorMode] = useState(false);
+  const [dashboardBriefing, setDashboardBriefing] = useState(null);
+
   const [plannedSessionIds, setPlannedSessionIds] = useState([]);
   const [plannedDraftSessionIds, setPlannedDraftSessionIds] = useState([]);
-  const [instructorPinModal, setInstructorPinModal] = useState(null);
-  const [pinInput, setPinInput] = useState('');
-  const [pinConfirmInput, setPinConfirmInput] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [dashboardBriefing, setDashboardBriefing] = useState(null);
-  const [briefingLoading, setBriefingLoading] = useState(false);
-  const chatMessagesRef = useRef(null);
-  const wasNearBottomRef = useRef(true);
-  const previousThreadIdRef = useRef(null);
-  const clearUndoTimeoutRef = useRef(null);
-  const hasInitializedStudentProfileRef = useRef(false);
-  const importProfilesInputRef = useRef(null);
-  const studentPhotoInputRef = useRef(null);
-
-  const openConfirmModal = ({ title, body, confirmLabel = 'Confirm', danger = false, onConfirm }) => {
-    setConfirmModal({ title, body, confirmLabel, danger, onConfirm });
-  };
-
-  const openPromptModal = ({ title, placeholder = '', defaultValue = '', onConfirm }) => {
-    setPromptValue(defaultValue);
-    setPromptModal({ title, placeholder, onConfirm });
-  };
-
-  const hydrateStudentProfile = useCallback((profile) => {
-    if (profile) {
-      const savedStatuses = profile.sessionStatuses ?? {};
-      setSessionStatuses(savedStatuses);
-      setSessionDraftStatuses(savedStatuses);
-      const savedRatings = profile.sessionRatings ?? {};
-      setSessionRatings(savedRatings);
-      setSessionDraftRatings(savedRatings);
-      setSessionNotes(profile.sessionNotes ?? {});
-      setSessionChecklist(profile.sessionChecklist ?? {});
-      const plannedIds = Array.isArray(profile.plannedSessionIds) ? profile.plannedSessionIds : [];
-      setPlannedSessionIds(plannedIds);
-      setPlannedDraftSessionIds(plannedIds);
-      setSelectedRating(profile.selectedRating ?? 'Private Pilot');
-      setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createDefaultChatThread()]);
-      setActiveChatThreadId(profile.activeChatThreadId ?? 'chat-default');
-      setUseLessonContext(profile.useLessonContext ?? true);
-      setStudentPhoto(profile.studentPhoto ?? null);
-      return;
-    }
-
-    setSessionStatuses({});
-    setSessionDraftStatuses({});
-    setSessionRatings({});
-    setSessionDraftRatings({});
-    setSessionNotes({});
-    setSessionChecklist({});
-    setPlannedSessionIds([]);
-    setPlannedDraftSessionIds([]);
-    setSelectedRating('Private Pilot');
-    const starterThread = createDefaultChatThread();
-    setChatThreads([starterThread]);
-    setActiveChatThreadId(starterThread.id);
-    setUseLessonContext(true);
-    setStudentPhoto(null);
-  }, []);
 
   useEffect(() => {
     initializeData().then((data) => {
@@ -373,6 +325,7 @@ function App() {
       });
       setProgressHistory(data.progressHistory);
       setOralSessions(data.oralSessions);
+      setExpandedStageIds({}); // Collapse all phases when switching students
       setDataLoading(false);
     });
   }, [activeStudentName]);
@@ -448,7 +401,7 @@ function App() {
       setPlannedSessionIds(plannedIds);
       setPlannedDraftSessionIds(plannedIds);
       setSelectedRating(profile.selectedRating ?? 'Private Pilot');
-      setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createDefaultChatThread()]);
+      setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createChatThread()]);
       setActiveChatThreadId(profile.activeChatThreadId ?? 'chat-default');
       setUseLessonContext(profile.useLessonContext ?? true);
       setStudentPhoto(profile.studentPhoto ?? null);
@@ -537,30 +490,22 @@ function App() {
     []
   );
 
+  // Robust outside click handler for hamburger menu
+  // Robust outside click handler for hamburger menu (from demo)
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      const clickedInsideMenuCluster = Boolean(
-        e.target.closest('.hero-menu-button')
-          || e.target.closest('.hero-menu-dropdown')
-          || e.target.closest('.hero-user-dropdown')
-          || e.target.closest('.hero-settings-dropdown')
-          || e.target.closest('.hero-help-panel')
-      );
-
-      if (!clickedInsideMenuCluster) {
-        if (menuOpen) setMenuOpen(false);
-        if (showUserDropdown) setShowUserDropdown(false);
-        if (showSettingsDropdown) setShowSettingsDropdown(false);
-        if (showHelpPanel) setShowHelpPanel(false);
+    if (!menuOpen) return;
+    function handleClick(e) {
+      if (
+        menuButtonRef.current?.contains(e.target) ||
+        menuDropdownRef.current?.contains(e.target)
+      ) {
+        return;
       }
-
-      if (ratingMenuOpen && !e.target.closest('.hero-rating-toggle') && !e.target.closest('.hero-rating-dropdown')) {
-        setRatingMenuOpen(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [menuOpen, ratingMenuOpen, showHelpPanel, showSettingsDropdown, showUserDropdown]);
+      setMenuOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!chatThreads.length) {
@@ -647,7 +592,7 @@ function App() {
   );
   const hasPendingStatusChanges = useMemo(() => {
     const statusKeys = new Set([...Object.keys(sessionStatuses), ...Object.keys(sessionDraftStatuses)]);
-    for (const key of statusKeys) {
+    for (const key of Array.from(statusKeys)) {
       if ((sessionStatuses[key] ?? '') !== (sessionDraftStatuses[key] ?? '')) {
         return true;
       }
@@ -656,7 +601,7 @@ function App() {
   }, [sessionDraftStatuses, sessionStatuses]);
   const hasPendingRatingChanges = useMemo(() => {
     const ratingKeys = new Set([...Object.keys(sessionRatings), ...Object.keys(sessionDraftRatings)]);
-    for (const key of ratingKeys) {
+    for (const key of Array.from(ratingKeys)) {
       if ((sessionRatings[key] ?? null) !== (sessionDraftRatings[key] ?? null)) {
         return true;
       }
@@ -717,17 +662,48 @@ function App() {
     }, [phasesWithProgress]);
   const completedPhaseCount = phaseProgress.filter((phase) => phase.isCompleted).length;
 
+  // Improved sequential phase unlocking: only the next phase (or solo) is unlocked after completing the current one
   const phaseLockStates = useMemo(() => {
-    let allPreviousComplete = true;
-    return phasesWithProgress.map((phase) => {
+    // Find phase 2 index
+    const phase2Idx = phasesWithProgress.findIndex(p => p.title && p.title.toLowerCase().includes('phase 2'));
+    // Find phase 3 index
+    const phase3Idx = phasesWithProgress.findIndex(p => p.title && p.title.toLowerCase().includes('phase 3'));
+    // Find solo index
+    let soloIdx = -1;
+    for (let i = 0; i < phasesWithProgress.length; i++) {
+      if (phasesWithProgress[i].title && phasesWithProgress[i].title.toLowerCase().includes('solo')) {
+        soloIdx = i;
+        break;
+      }
+    }
+
+    // Helper: are all phase 1 tasks complete?
+    const phase1Idx = phasesWithProgress.findIndex(p => p.title && p.title.toLowerCase().includes('phase 1'));
+    const allPhase1Complete = phase1Idx !== -1 && phasesWithProgress[phase1Idx].sessions.every((session) => session.status === 'completed');
+    // Helper: are all endorsements checked?
+    const allEndorsementsChecked = endorsementChecks.Medical && endorsementChecks['TSA Endorsement'] && endorsementChecks.IACRA;
+
+    return phasesWithProgress.map((phase, idx) => {
       const isCompleted = phase.sessions.length > 0 && phase.sessions.every((session) => session.status === 'completed');
-      const isLocked = !allPreviousComplete;
-      if (!isCompleted) {
-        allPreviousComplete = false;
+      let isLocked = true;
+      if (idx === 0) {
+        isLocked = false; // First phase always unlocked
+      } else if (idx === phase2Idx) {
+        // Phase 2 is unlocked only if all phase 1 tasks complete AND all endorsements checked
+        isLocked = !(allPhase1Complete && allEndorsementsChecked);
+      } else if (soloIdx !== -1 && idx === soloIdx) {
+        // Solo is unlocked only if phase 2 is complete
+        isLocked = !(phase2Idx !== -1 && phasesWithProgress[phase2Idx].sessions.every((session) => session.status === 'completed'));
+      } else if (soloIdx !== -1 && idx === phase3Idx) {
+        // Phase 3 is unlocked only if solo is complete
+        isLocked = !(soloIdx !== -1 && phasesWithProgress[soloIdx].sessions.every((session) => session.status === 'completed'));
+      } else {
+        // All other phases: unlocked only if previous phase is complete and not solo/phase3 special case
+        isLocked = !(idx > 0 && phasesWithProgress[idx - 1].sessions.every((session) => session.status === 'completed'));
       }
       return { id: phase.id, isCompleted, isLocked };
     });
-  }, [phasesWithProgress]);
+  }, [phasesWithProgress, endorsementChecks]);
 
   useEffect(() => {
     const firstUnlockedId = phaseLockStates.find((stage) => !stage.isLocked)?.id;
@@ -762,7 +738,7 @@ function App() {
   const selectedChecklistCompleted = selectedSession?.checklist?.filter((item) => selectedChecklistState[item]).length ?? 0;
   const hasBriefingInput = lessonDays.some((day) => day.note || day.tasks.some((task) => task.rating != null));
   const visibleChatThreads = useMemo(
-    () => [...chatThreads].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+    () => [...chatThreads].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     [chatThreads]
   );
   const activeChatThread = useMemo(
@@ -1009,23 +985,35 @@ function App() {
       }
     }
     setHoursError('');
-    // Clone the draft statuses so we can update them before saving
-    const updatedStatuses = { ...sessionDraftStatuses };
-    // For each session, if it is in-progress and has a 5-star rating, mark as completed
-    Object.keys(sessionDraftRatings).forEach((sessionId) => {
-      const rating = sessionDraftRatings[sessionId];
-      if (rating === 5) {
-        updatedStatuses[sessionId] = 'completed';
-      }
+    // Merge completed statuses from previous saves to ensure persistence
+    setSessionStatuses((prevStatuses) => {
+      // Start with previous statuses to preserve completed
+      const mergedStatuses = { ...prevStatuses };
+      // Apply draft changes, but never revert completed to incomplete
+      Object.keys(sessionDraftStatuses).forEach((sessionId) => {
+        const prev = mergedStatuses[sessionId];
+        const next = sessionDraftStatuses[sessionId];
+        if (prev === 'completed') {
+          // Never revert completed to anything else
+          mergedStatuses[sessionId] = 'completed';
+        } else {
+          mergedStatuses[sessionId] = next;
+        }
+      });
+      // If a session is newly completed via 5-star rating, mark as completed
+      Object.keys(sessionDraftRatings).forEach((sessionId) => {
+        const rating = sessionDraftRatings[sessionId];
+        if (rating === 5) {
+          mergedStatuses[sessionId] = 'completed';
+        }
+      });
+      return { ...mergedStatuses };
     });
-    setSessionStatuses({ ...updatedStatuses }); // Force new object reference
-    setSessionRatings({ ...sessionDraftRatings });
+    setSessionRatings((prevRatings) => ({ ...prevRatings, ...sessionDraftRatings }));
     setPlannedSessionIds([...plannedDraftSessionIds]);
     setSessionDraftStatuses({});
     setSessionDraftRatings({});
-    // Removed syllabus changes saved toast
     setInstructorHours('');
-    // Force a re-render by updating a dummy state
     setTimeout(() => setSessionStatuses((s) => ({ ...s })), 0);
   };
 
@@ -1103,8 +1091,6 @@ function App() {
     setMenuOpen(false);
   };
 
-  // ...existing code...
-
   const updateSessionNote = (sessionId, note) => {
     setSessionNotes((currentNotes) => ({
       ...currentNotes,
@@ -1171,7 +1157,7 @@ function App() {
       return;
     }
 
-    openConfirmModal({
+    setConfirmModal({
       title: 'Clear Chat Thread',
       body: `Clear all messages in "${activeChatThread.title}"? This cannot be undone.`,
       confirmLabel: 'Clear',
@@ -1209,7 +1195,7 @@ function App() {
       return;
     }
 
-    openConfirmModal({
+    setConfirmModal({
       title: 'Delete Conversation',
       body: `Delete "${threadToDelete.title}"? This cannot be undone.`,
       confirmLabel: 'Delete',
@@ -1240,7 +1226,7 @@ function App() {
   };
 
   const clearAllChatHistory = () => {
-    openConfirmModal({
+    setConfirmModal({
       title: 'Clear Active Chat',
       body: `Clear all messages in "${activeChatThread?.title || 'this chat'}"? This cannot be undone.`,
       confirmLabel: 'Clear All',
@@ -1613,7 +1599,7 @@ function App() {
     if (studentName === 'ADD_NEW') {
       setShowUserDropdown(false);
       setMenuOpen(false);
-      openPromptModal({
+      setPromptModal({
         title: 'Add Student',
         placeholder: 'Enter student name...',
         defaultValue: '',
@@ -1657,10 +1643,53 @@ function App() {
     setShowHelpPanel((isOpen) => !isOpen);
   };
 
+  // Hydrate or reset the current student profile (null = full reset)
+  const hydrateStudentProfile = (profile) => {
+    if (!profile) {
+      setSessionStatuses({});
+      setSessionDraftStatuses({});
+      setSessionRatings({});
+      setSessionDraftRatings({});
+      setSessionNotes({});
+      setSessionChecklist({});
+      setPlannedSessionIds([]);
+      setPlannedDraftSessionIds([]);
+      setSelectedRating('Private Pilot');
+      const starterThread = createDefaultChatThread();
+      setChatThreads([starterThread]);
+      setActiveChatThreadId(starterThread.id);
+      setUseLessonContext(true);
+      setStudentPhoto(null);
+      // Also clear localStorage for this student
+      try {
+        const key = normalizeStudentKey(activeStudentName);
+        const profiles = readStudentProfiles();
+        profiles[key] = {
+          studentName: activeStudentName,
+        };
+        writeStudentProfiles(profiles);
+      } catch {}
+      return;
+    }
+    setSessionStatuses(profile.sessionStatuses ?? {});
+    setSessionDraftStatuses(profile.sessionStatuses ?? {});
+    setSessionRatings(profile.sessionRatings ?? {});
+    setSessionDraftRatings(profile.sessionRatings ?? {});
+    setSessionNotes(profile.sessionNotes ?? {});
+    setSessionChecklist(profile.sessionChecklist ?? {});
+    setPlannedSessionIds(Array.isArray(profile.plannedSessionIds) ? profile.plannedSessionIds : []);
+    setPlannedDraftSessionIds(Array.isArray(profile.plannedSessionIds) ? profile.plannedSessionIds : []);
+    setSelectedRating(profile.selectedRating ?? 'Private Pilot');
+    setChatThreads(profile.chatThreads?.length ? profile.chatThreads : [createDefaultChatThread()]);
+    setActiveChatThreadId(profile.activeChatThreadId ?? (profile.chatThreads?.[0]?.id || 'chat-default'));
+    setUseLessonContext(profile.useLessonContext ?? true);
+    setStudentPhoto(profile.studentPhoto ?? null);
+  };
+
   const resetCurrentStudentData = () => {
-    openConfirmModal({
+    setConfirmModal({
       title: 'Reset Student Data',
-      body: `Reset progress, notes, checklist, and chat for ${activeStudentName}? This cannot be undone.`,
+      body: `Reset ALL progress, notes, checklist, chat, ratings, solo/endorsement checkboxes, and lesson days for ${activeStudentName}? This cannot be undone.`,
       confirmLabel: 'Reset',
       danger: true,
       onConfirm: () => {
@@ -1668,7 +1697,7 @@ function App() {
         setIsOralExamMode(false);
         setShowSettingsDropdown(false);
         setMenuOpen(false);
-        setNoteToastMessage(`Reset training data for ${activeStudentName}`);
+        setNoteToastMessage(`Reset ALL training data for ${activeStudentName}`);
       },
     });
   };
@@ -1842,19 +1871,157 @@ function App() {
       <main className="dashboard-shell">
         <section className="hero-card">
           <div className="hero-brand-wrap">
-            <img src={copiLogo} alt="CoPi" className="hero-logo" />
+            {/* Logo removed: missing asset. You can add a logo here if desired. */}
+            <span className="hero-logo-text" style={{fontWeight:700,fontSize:'2.2rem',color:'#38bdf8',letterSpacing:'0.04em'}}>CoPi</span>
             <p className="eyebrow hero-companion-tagline">Your flight training companion</p>
 
-            <button
-              className="hero-menu-button"
-              onClick={handleMenuToggle}
-              type="button"
-              aria-label="Open menu"
-            >
-              <span></span>
-              <span></span>
-              <span></span>
-            </button>
+            <div className="hero-student-header-box" style={{ background: 'rgba(15,23,42,0.85)', borderRadius: 16, border: '1.5px solid #38bdf8', padding: '32px 32px 36px 32px', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', margin: '96px 0 18px 0', position: 'relative', minHeight: 210 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <strong className="hero-student-name">{syllabus.student}</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="hero-student-photo-button"
+                    onClick={openStudentPhotoPicker}
+                    aria-label={studentPhoto ? 'Change student photo' : 'Upload student photo'}
+                    title={studentPhoto ? 'Change photo' : 'Upload photo'}
+                    style={{ marginLeft: 12, marginRight: 8 }}
+                  >
+                    {studentPhoto ? (
+                      <img src={studentPhoto} alt={`${syllabus.student} profile`} className="hero-student-photo-image" />
+                    ) : (
+                      <svg
+                        className="hero-student-photo-icon"
+                        viewBox="0 0 64 64"
+                        aria-hidden="true"
+                        focusable="false"
+                      >
+                        <rect x="10" y="20" width="44" height="30" rx="8" className="camera-outline" />
+                        <path d="M21 20l4-6h14l4 6" className="camera-outline" />
+                        <circle cx="32" cy="35" r="9" className="camera-outline" />
+                        <circle cx="46" cy="26" r="1.8" className="camera-dot" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    className="hero-menu-button"
+                    ref={menuButtonRef}
+                    onClick={() => setMenuOpen((v) => !v)}
+                    type="button"
+                    aria-label="Open menu"
+                    aria-expanded={menuOpen}
+                    aria-haspopup="true"
+                    style={{ marginLeft: 0, marginRight: 0, position: 'static', zIndex: 10001 }}
+                  >
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', marginTop: 18 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <div className="hero-rating-wrap">
+                  <button
+                    className="hero-rating-pill hero-rating-toggle"
+                    type="button"
+                    onClick={() => setRatingMenuOpen((isOpen) => !isOpen)}
+                    aria-expanded={ratingMenuOpen}
+                  >
+                    {selectedRating}
+                    <span className="hero-rating-caret">▾</span>
+                  </button>
+                  {ratingMenuOpen ? (
+                    <div className="hero-rating-dropdown">
+                      <button
+                        type="button"
+                        className={`hero-rating-option ${selectedRating === 'Private Pilot' ? 'active' : ''}`}
+                        onClick={() => {
+                          setSelectedRating('Private Pilot');
+                          setRatingMenuOpen(false);
+                        }}
+                      >
+                        Private Pilot
+                      </button>
+                      <button
+                        type="button"
+                        className={`hero-rating-option ${selectedRating === 'Instrument - Coming Soon' ? 'active' : ''}`}
+                        onClick={() => {
+                          setSelectedRating('Instrument - Coming Soon');
+                          setRatingMenuOpen(false);
+                        }}
+                      >
+                        Instrument - Coming Soon
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                  <div
+                    className="hero-stage-progress"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Training completion ${completionRate}%. Stages completed: ${completedPhaseCount} of ${phaseProgress.length}. Click to view progress.`}
+                    onClick={() => setActiveTab('progress')}
+                    onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setActiveTab('progress')}
+                    style={{ cursor: 'pointer', position: 'relative', left: 0, right: 0, bottom: 0, marginLeft: 24, flex: 1 }}
+                  >
+                    <div style={{
+                      position: 'absolute',
+                      top: '-28px',
+                      left: 0,
+                      width: '100%',
+                      textAlign: 'right',
+                      fontWeight: 600,
+                      color: '#38bdf8',
+                      fontSize: '1.08rem',
+                      letterSpacing: '0.01em',
+                      zIndex: 2
+                    }}>{completionRate}%</div>
+                    <div className="hero-tube-track" role="presentation">
+                      <div className="hero-tube-fill" style={{ width: `${completionRate}%` }} />
+                      <div className="hero-tube-markers" aria-hidden="true">
+                        {phaseProgress.map((phase, index) => (
+                          <span
+                            key={phase.id ?? `${phase.title}-${index}`}
+                            className={`hero-tube-marker${phase.isCompleted ? ' is-complete' : ''}`}
+                            style={{ left: `${phase.positionPercent}%` }}
+                            title={phase.title}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {menuOpen && (
+                <div
+                  className="hero-menu-dropdown"
+                  ref={menuDropdownRef}
+                  style={{
+                    zIndex: 9999,
+                    position: 'absolute',
+                    top: '100%',
+                    right: 24,
+                    marginTop: 6,
+                    minWidth: 160
+                  }}
+                >
+                  {instructorMode ? (
+                    <>
+                      <button type="button" onClick={() => { switchUser(); setMenuOpen(false); }}>Switch user</button>
+                      <button type="button" onClick={() => { toggleSettingsDropdown(); setMenuOpen(false); }}>Settings</button>
+                    </>
+                  ) : null}
+                  <button type="button" onClick={() => { toggleHelpPanel(); setMenuOpen(false); }}>Help</button>
+                  <div className="menu-divider"></div>
+                  {instructorMode ? (
+                    <button type="button" className="menu-item-warn" onClick={() => { lockInstructorMode(); setMenuOpen(false); }}>🔒 Lock instructor mode</button>
+                  ) : (
+                    <button type="button" className="menu-item-instructor" onClick={() => { openInstructorLogin(); setMenuOpen(false); }}>Instructor login</button>
+                  )}
+                </div>
+              )}
+            </div>
 
             <input
               ref={importProfilesInputRef}
@@ -1915,7 +2082,7 @@ function App() {
                 <p className="help-panel-title">How to use CoPi</p>
                 <div className="help-section">
                   <p className="help-heading">Switch students</p>
-                  <p className="help-body">Tap the menu → Switch user. Each student's progress, notes, and chat are saved separately.</p>
+                  <p className="help-body">Tap the menu → Switch user.</p>
                 </div>
                 <div className="help-section">
                   <p className="help-heading">Oral exam mode</p>
@@ -1923,7 +2090,7 @@ function App() {
                 </div>
                 <div className="help-section">
                   <p className="help-heading">Export &amp; import</p>
-                  <p className="help-body">Settings → Export saves all student profiles as a JSON file to your Downloads folder. Use Import to restore or transfer them.</p>
+                  <p className="help-body">Settings → Export saves all student profiles as a JSON file to your Downloads folder</p>
                 </div>
                 <div className="help-section">
                   <p className="help-heading">Chat is offline?</p>
@@ -1943,123 +2110,37 @@ function App() {
               </div>
             )}
 
-            {menuOpen && !showUserDropdown && !showSettingsDropdown && !showHelpPanel && (
-              <div className="hero-menu-dropdown">
+            {menuOpen && (
+              <div
+                className="hero-menu-dropdown"
+                ref={menuDropdownRef}
+                style={{
+                  zIndex: 9999,
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 6,
+                  minWidth: 160
+                }}
+              >
                 {instructorMode ? (
                   <>
-                    <button type="button" onClick={switchUser}>Switch user</button>
-                    <button type="button" onClick={toggleSettingsDropdown}>Settings</button>
+                    <button type="button" onClick={() => { switchUser(); setMenuOpen(false); }}>Switch user</button>
+                    <button type="button" onClick={() => { toggleSettingsDropdown(); setMenuOpen(false); }}>Settings</button>
                   </>
                 ) : null}
-                <button type="button" onClick={toggleHelpPanel}>Help</button>
+                <button type="button" onClick={() => { toggleHelpPanel(); setMenuOpen(false); }}>Help</button>
                 <div className="menu-divider"></div>
                 {instructorMode ? (
-                  <button type="button" className="menu-item-warn" onClick={lockInstructorMode}>🔒 Lock instructor mode</button>
+                  <button type="button" className="menu-item-warn" onClick={() => { lockInstructorMode(); setMenuOpen(false); }}>🔒 Lock instructor mode</button>
                 ) : (
-                  <button type="button" className="menu-item-instructor" onClick={openInstructorLogin}>Instructor login</button>
+                  <button type="button" className="menu-item-instructor" onClick={() => { openInstructorLogin(); setMenuOpen(false); }}>Instructor login</button>
                 )}
               </div>
             )}
           </div>
 
-          <div className="hero-panel">
-            <div className="hero-student-header">
-              <strong className="hero-student-name">{syllabus.student}</strong>
-              <button
-                type="button"
-                className="hero-student-photo-button"
-                onClick={openStudentPhotoPicker}
-                aria-label={studentPhoto ? 'Change student photo' : 'Upload student photo'}
-                title={studentPhoto ? 'Change photo' : 'Upload photo'}
-              >
-                {studentPhoto ? (
-                  <img src={studentPhoto} alt={`${syllabus.student} profile`} className="hero-student-photo-image" />
-                ) : (
-                  <svg
-                    className="hero-student-photo-icon"
-                    viewBox="0 0 64 64"
-                    aria-hidden="true"
-                    focusable="false"
-                  >
-                    <rect x="10" y="20" width="44" height="30" rx="8" className="camera-outline" />
-                    <path d="M21 20l4-6h14l4 6" className="camera-outline" />
-                    <circle cx="32" cy="35" r="9" className="camera-outline" />
-                    <circle cx="46" cy="26" r="1.8" className="camera-dot" />
-                  </svg>
-                )}
-              </button>
-            </div>
-            <div className="hero-rating-wrap">
-              <button
-                className="hero-rating-pill hero-rating-toggle"
-                type="button"
-                onClick={() => setRatingMenuOpen((isOpen) => !isOpen)}
-                aria-expanded={ratingMenuOpen}
-              >
-                {selectedRating}
-                <span className="hero-rating-caret">▾</span>
-              </button>
-
-              {ratingMenuOpen ? (
-                <div className="hero-rating-dropdown">
-                  <button
-                    type="button"
-                    className={`hero-rating-option ${selectedRating === 'Private Pilot' ? 'active' : ''}`}
-                    onClick={() => {
-                      setSelectedRating('Private Pilot');
-                      setRatingMenuOpen(false);
-                    }}
-                  >
-                    Private Pilot
-                  </button>
-                  <button
-                    type="button"
-                    className={`hero-rating-option ${selectedRating === 'Instrument - Coming Soon' ? 'active' : ''}`}
-                    onClick={() => {
-                      setSelectedRating('Instrument - Coming Soon');
-                      setRatingMenuOpen(false);
-                    }}
-                  >
-                    Instrument - Coming Soon
-                  </button>
-                </div>
-              ) : null}
-            </div>
-
-            {/* Progress Percentage Label (floating above fill) */}
-            <div
-              className="hero-progress-percentage-label"
-              style={{
-                left: `calc(${completionRate}% - 18px)`,
-                bottom: '22px', // Move label 10px closer to the bar (was 32px)
-              }}
-            >
-              {completionRate}%
-            </div>
-            <div
-              className="hero-stage-progress"
-              role="button"
-              tabIndex={0}
-              aria-label={`Training completion ${completionRate}%. Stages completed: ${completedPhaseCount} of ${phaseProgress.length}. Click to view progress.`}
-              onClick={() => setActiveTab('progress')}
-              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setActiveTab('progress')}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="hero-tube-track" role="presentation">
-                <div className="hero-tube-fill" style={{ width: `${completionRate}%` }} />
-                <div className="hero-tube-markers" aria-hidden="true">
-                  {phaseProgress.map((phase, index) => (
-                    <span
-                      key={phase.id ?? `${phase.title}-${index}`}
-                      className={`hero-tube-marker${phase.isCompleted ? ' is-complete' : ''}`}
-                      style={{ left: `${phase.positionPercent}%` }}
-                      title={phase.title}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Removed redundant bottom Private Pilot/progress bar box as requested */}
         </section>
 
         {activeTab === 'dashboard' && (
@@ -2189,19 +2270,7 @@ function App() {
             ) : null}
 
             {instructorMode ? (
-              <div className="syllabus-save-row" style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-                <div style={{ marginLeft: '10%', marginTop: '24px' }}>
-                  <div style={{ position: 'relative', display: 'inline-block' }}>
-                    {/* Endorsements dropdown only, pill removed */}
-                    {showEndorsementsDropdown && (
-                      <ul className="endorsements-dropdown">
-                        {ENDORSEMENTS_DROPDOWN_OPTIONS.map((option) => (
-                          <li key={option} onClick={() => handleEndorsementSelect(option)}>{option}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
+              <div className="syllabus-save-row" style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: 28 }}>
                 <div className="instructor-hours-group">
                   <div className="hours-bubble" style={{ marginRight: 0 }}>
                     <span className="hours-bubble-label">Hours</span>
@@ -2231,7 +2300,7 @@ function App() {
             ) : null}
 
 
-            {/* Endorsements dropdown above Phase 1 */}
+            {/* Endorsements dropdown below hours/save row */}
             <div className="endorsements-dropdown-row" style={{ maxWidth: 320, margin: '16px 0 12px 32px', whiteSpace: 'nowrap', position: 'relative', left: 0 }}>
               <label className="endorsements-dropdown-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', fontSize: '1.08rem' }}>
                 <div style={{ position: 'relative', marginLeft: '5%', display: 'inline-flex', alignItems: 'center' }}>
@@ -2271,8 +2340,19 @@ function App() {
                             style={{ marginRight: 10, accentColor: '#38bdf8', width: 18, height: 18, cursor: 'pointer' }}
                             id={`endorsement-checkbox-${option}`}
                           />
-                          <label htmlFor={`endorsement-checkbox-${option}`} style={{ color: '#dbeafe', fontSize: '1rem', cursor: 'pointer', userSelect: 'none' }}>
+                          <label htmlFor={`endorsement-checkbox-${option}`} style={{ color: '#dbeafe', fontSize: '1rem', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
                             {option}
+                            {option === 'TSA Endorsement' && (
+                              <a
+                                href="https://www.faa.gov/sites/faa.gov/files/pilots/become/student/A_14.pdf"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: '#38bdf8', fontWeight: 600, marginLeft: 6, textDecoration: 'underline', fontSize: '0.98em' }}
+                                title="View A.14 TSA Endorsement PDF"
+                              >
+                                A.14
+                              </a>
+                            )}
                           </label>
                         </li>
                       ))}
@@ -2288,23 +2368,19 @@ function App() {
                 // Insert Solo checkbox after Phase 2 and before Phase 3
                 const isPhase1 = phase.title && phase.title.toLowerCase().includes('phase 1 - foundations, preflight & basic maneuvers');
                 const isPhase2 = phase.title && phase.title.toLowerCase().includes('phase 2');
-                // isPhase3 declared only once below if not already
                 const isPhase3 = phase.title && phase.title.toLowerCase().includes('phase 3');
                 let soloChecklist = null;
                 let soloCheckbox = null;
+                let crossCountrySoloCheckbox = null;
+                // First Solo logic (after Phase 2, before Phase 3)
                 if (
                   index > 0 &&
                   phasesWithProgress[index - 1].title &&
                   phasesWithProgress[index - 1].title.toLowerCase().includes('phase 2') &&
-                  isPhase3
+                  phase.title && phase.title.toLowerCase().includes('phase 3')
                 ) {
-                  // Checklist for pre-solo endorsements
-                  const SOLO_CHECKLIST_LABELS = [];
-                  // Determine if Phase 2 is complete (all sessions have status 'completed')
                   const phase2 = phasesWithProgress.find(p => p.title && p.title.toLowerCase().includes('phase 2'));
                   const phase2Complete = phase2 && phase2.sessions.every(s => s.status === 'completed');
-                  soloChecklist = null;
-                  // ...existing code...
                   soloCheckbox = (
                     <div className="solo-checkbox-row" style={{ maxWidth: 320, margin: '0 auto', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                       <label className="solo-checkbox-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }}>
@@ -2315,8 +2391,36 @@ function App() {
                           aria-label="Solo"
                           disabled={!phase2Complete}
                         />
-                          <span className="solo-checkbox-text" style={{ fontSize: '1.08rem', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                        <span className="solo-checkbox-text" style={{ fontSize: '1.08rem', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
                           <span style={{fontWeight:700,letterSpacing:'0.03em',color:'#f59e42'}}>First Solo</span>
+                        </span>
+                      </label>
+                    </div>
+                  );
+                }
+                // Cross Country Solo logic (after Phase 3, before Phase 4)
+                if (
+                  index > 0 &&
+                  phasesWithProgress[index - 1].title &&
+                  phasesWithProgress[index - 1].title.toLowerCase().includes('phase 3') &&
+                  phase.title && phase.title.toLowerCase().includes('phase 4')
+                ) {
+                  const phase3 = phasesWithProgress.find(p => p.title && p.title.toLowerCase().includes('phase 3'));
+                  const phase3Complete = phase3 && phase3.sessions.every(s => s.status === 'completed');
+                  crossCountrySoloCheckbox = (
+                    <div className="solo-checkbox-row" style={{ maxWidth: 320, margin: '0 auto', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                      <label className="solo-checkbox-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }}>
+                        <input
+                          type="checkbox"
+                          className="solo-checkbox-input"
+                          checked={crossCountrySoloChecked}
+                          onChange={handleCrossCountrySoloCheck}
+                          style={{ accentColor: '#f59e42', width: 20, height: 20, marginRight: 8, boxShadow: '0 2px 8px #f59e4233', cursor: phase3Complete ? 'pointer' : 'not-allowed', opacity: phase3Complete ? 1 : 0.5 }}
+                          aria-label="Cross Country Solo"
+                          disabled={!phase3Complete}
+                        />
+                        <span className="solo-checkbox-text" style={{ fontSize: '1.08rem', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                          <span style={{fontWeight:700,letterSpacing:'0.03em',color:'#f59e42'}}>Cross Country Solo</span>
                         </span>
                       </label>
                     </div>
@@ -2390,15 +2494,19 @@ function App() {
                 nonBlankSessions = phase.sessions.filter(
                   (session) => session && session.title && session.title.trim() !== ''
                 );
-                if (soloChecklist || soloCheckbox) {
+                if (soloChecklist || soloCheckbox || crossCountrySoloCheckbox) {
+                  // Get phase completion state for highlight
+                  const phaseState = phaseProgress.find(p => p.id === phase.id) || {};
+                  const isCompleted = phaseState.isCompleted;
                   return (
-                    <React.Fragment key={phase.id + '-with-solo'}>
+                    <>
                       {soloChecklist}
                       {soloCheckbox}
+                      {crossCountrySoloCheckbox}
                       <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
                         <div
-                          className="phase-card-header phase-dropdown-button"
-                          style={{ cursor: 'pointer' }}
+                          className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}${isCompleted ? ' burnt-orange-title' : ''}`}
+                          style={{ cursor: isLocked ? 'not-allowed' : 'pointer' }}
                           onClick={() => {
                             setExpandedStageIds((current) => ({
                               ...current,
@@ -2428,17 +2536,135 @@ function App() {
                         {isExpanded ? (
                           <div className={`session-list${isLocked ? ' phase-content-locked' : ''}`}
                             style={isLocked ? { pointerEvents: 'none', opacity: 0.5, filter: 'grayscale(0.5)' } : {}}>
-                            {/* ...rest of session list... */}
+                            {/* No checklist items remain for Phase 1 - Foundations, Preflight & Basic Maneuvers */}
+                            {/* Phase 1 checklist removed as requested */}
+                            {nonBlankSessions.map((session) => (
+                              <div className="session-row" key={session.id} style={{ position: 'relative' }}>
+                                <div className="session-main">
+                                  <div className="session-copy">
+                                    <div className="session-title-row">
+                                      <h3>{session.title}</h3>
+                                    </div>
+                                    {/* Standards Link Icon (bottom right) */}
+                                    {Array.isArray(session.standards) && session.standards.length > 0 && (() => {
+                                      // Prefer AC link if present, otherwise first
+                                      const ac = session.standards.find(std => std.ref.startsWith('AC'));
+                                      const std = ac || session.standards[0];
+                                      return (
+                                        <div
+                                          className="standards-link-stack"
+                                          style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 2, display: 'block', maxWidth: '220px' }}
+                                        >
+                                          <a
+                                            href={std.link}
+                                            className={`standards-link${std.ref.startsWith('AC') ? ' ac-link' : ''}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={`View ${std.ref}`}
+                                            style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.82em', fontWeight: std.ref.startsWith('AC') ? 'bold' : 'normal', color: std.ref.startsWith('AC') ? '#f59e42' : undefined }}
+                                          >
+                                            {std.ref}
+                                          </a>
+                                        </div>
+                                      );
+                                    })()}
+                                    {(() => {
+                                      // Use draft status in instructor mode, saved status otherwise
+                                      // Only highlight as planned if user explicitly selects it
+                                      const plannedIsActive = instructorMode
+                                        ? plannedDraftSessionIdSet.has(session.id)
+                                        : plannedSessionIdSet.has(session.id);
+                                      let highlightStatus;
+                                      if (plannedIsActive) {
+                                        highlightStatus = 'planned';
+                                      } else if (instructorMode && Object.prototype.hasOwnProperty.call(sessionDraftStatuses, session.id)) {
+                                        highlightStatus = sessionDraftStatuses[session.id];
+                                      } else {
+                                        highlightStatus = session.status || null;
+                                      }
+                                      return (
+                                        <div className="status-actions" aria-label={`Update ${session.title} status`}>
+                                          {statusOrder.map((status) => {
+                                            const isDisabled = isInstrumentComingSoon || !instructorMode || isLocked;
+                                            return (
+                                              <button
+                                                key={status}
+                                                type="button"
+                                                className={`status-button status-${status} ${status === highlightStatus ? 'active' : ''}`}
+                                                onClick={() => {
+                                                  if (isDisabled) return;
+                                                  if (status === highlightStatus) {
+                                                    // Unclick: clear status
+                                                    if (status === 'planned') {
+                                                      togglePlannedDraftStatus(session.id);
+                                                      updateSessionStatus(session.id, null);
+                                                    } else {
+                                                      updateSessionStatus(session.id, null);
+                                                    }
+                                                    return;
+                                                  }
+                                                  if (status === 'planned') {
+                                                    togglePlannedDraftStatus(session.id);
+                                                  } else {
+                                                    clearPlannedDraftStatus(session.id);
+                                                    updateSessionStatus(session.id, status);
+                                                  }
+                                                }}
+                                                disabled={isDisabled}
+                                              >
+                                                {statusLabel[status]}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })()}
+                                    {(() => {
+                                      const savedStatus = session.status;
+                                      const hasDraftStatus = Object.prototype.hasOwnProperty.call(sessionDraftStatuses, session.id);
+                                      const draftStatus = hasDraftStatus ? sessionDraftStatuses[session.id] : savedStatus;
+                                      const plannedIsActive = instructorMode
+                                        ? plannedDraftSessionIdSet.has(session.id)
+                                        : plannedSessionIdSet.has(session.id);
+                                      const effectiveActiveStatus = plannedIsActive ? 'planned' : (instructorMode ? draftStatus : savedStatus);
+                                      if (effectiveActiveStatus !== 'in-progress') {
+                                        return null;
+                                      }
+                                      const currentRating = instructorMode
+                                        ? (sessionDraftRatings[session.id] ?? 0)
+                                        : (sessionRatings[session.id] ?? 0);
+                                      return (
+                                        <div className="in-progress-rating-stars" aria-label={`Rating for ${session.title}`}>
+                                          {[1, 2, 3, 4, 5].map((star) => (
+                                            <button
+                                              key={star}
+                                              type="button"
+                                              className={`log-star${currentRating >= star ? ' active' : ''}`}
+                                              onClick={() => setSessionDraftRating(session.id, star)}
+                                              disabled={!instructorMode || isInstrumentComingSoon || isLocked}
+                                              aria-label={`${star} star`}
+                                            >★</button>
+                                          ))}
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ) : null}
                       </article>
-                    </React.Fragment>
+                    </>
                   );
                 }
+                // Get phase completion state for highlight
+                const phaseState = phaseProgress.find(p => p.id === phase.id) || {};
+                const isCompleted = phaseState.isCompleted;
                 return (
                   <article className={`phase-card${isLocked ? ' is-locked' : ''}`} key={phase.id}>
                     <div
-                      className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}`}
+                      className={`phase-card-header phase-dropdown-button${isLocked ? ' is-locked' : ''}${isCompleted ? ' burnt-orange-title' : ''}`}
                       style={{ cursor: isLocked ? 'not-allowed' : 'pointer' }}
                       onClick={() => {
                         setExpandedStageIds((current) => ({
@@ -2599,9 +2825,9 @@ function App() {
             ) : null}
 
             {instructorMode ? (
-              <div className="syllabus-save-row syllabus-save-row-bottom" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div className="syllabus-save-row syllabus-save-row-bottom" style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: 28 }}>
                 <div className="instructor-hours-group">
-                  <div className="hours-bubble">
+                  <div className="hours-bubble" style={{ marginRight: 0 }}>
                     <span className="hours-bubble-label">Hours</span>
                     <input
                       id="instructor-hours-input-bottom"
@@ -2621,9 +2847,9 @@ function App() {
                   className="planned-save-button"
                   onClick={saveSyllabusChanges}
                   disabled={!hasPendingSyllabusChanges || isInstrumentComingSoon}
-                  style={{ marginLeft: 8 }}
+                  style={{ marginLeft: 8, marginRight: '5%' }}
                 >
-                  Save Syllabus
+                  Save
                 </button>
               </div>
             ) : null}
@@ -2803,7 +3029,8 @@ function App() {
             type="button"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
           >
-            <img src={logoAI} alt="CoPi Logo" style={{ height: 96, width: 96, objectFit: 'contain' }} />
+            {/* Logo removed: missing asset. You can add a logo here if desired. */}
+            <span className="hero-logo-text" style={{fontWeight:700,fontSize:'2.2rem',color:'#38bdf8',letterSpacing:'0.04em'}}>CoPi</span>
           </button>
           <button
             className={`tab-bubble history-tab ${activeTab === 'history' ? 'active' : ''}`}
@@ -2878,9 +3105,10 @@ function App() {
         {!clearUndoState && noteToastMessage ? <div className="note-save-toast">{noteToastMessage}</div> : null}
       </main>
 
+      {/* Always render confirmModal at the end of the root, above all overlays */}
       {confirmModal && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setConfirmModal(null)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" role="dialog" aria-modal="true" style={{zIndex: 9999}} onClick={() => setConfirmModal(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
             <p className="modal-title">{confirmModal.title}</p>
             <p className="modal-body">{confirmModal.body}</p>
             <div className="modal-actions">
@@ -2890,6 +3118,7 @@ function App() {
               <button
                 type="button"
                 className={`modal-btn ${confirmModal.danger ? 'modal-btn-danger' : 'modal-btn-confirm'}`}
+                autoFocus
                 onClick={() => { confirmModal.onConfirm(); setConfirmModal(null); }}
               >
                 {confirmModal.confirmLabel}
@@ -2973,3 +3202,8 @@ function App() {
 }
 
 export default App;
+
+import HamburgerMenuDemo from './HamburgerMenuDemo.jsx';
+// Add this inside your main App render to test:
+// <HamburgerMenuDemo />
+

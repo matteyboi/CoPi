@@ -51,6 +51,8 @@ const CANONICAL_STAGES = [
       'After Landing, Parking, and Securing',
     ],
   },
+  // First Solo (existing logic expects this between 2 and 3)
+  // (removed for undo)
   {
     title: 'Phase 3 — Cross-Country & Navigation',
     tasks: [
@@ -61,6 +63,7 @@ const CANONICAL_STAGES = [
       'Basic Instrument Maneuvers',
     ],
   },
+  // Cross Country Solo (removed for undo)
   {
     title: 'Phase 4 — Advanced, Night, & Checkride Prep',
     tasks: [
