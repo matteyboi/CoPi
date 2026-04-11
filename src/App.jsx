@@ -1,4 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { initializeData, oralSessions as defaultOralSessions, progressHistory as defaultProgressHistory, syllabus as defaultSyllabus } from './data/syllabusData';
+import './App.css';
+import './instructorHours.css';
+import { normalizeStudentKey } from './utils/normalizeStudentKey';
+import { readStudentProfiles, writeStudentProfiles } from './utils/studentProfiles';
+import { STORAGE_KEY, NOTES_STORAGE_KEY, CHECKLIST_STORAGE_KEY, RATING_STORAGE_KEY, CHAT_THREADS_STORAGE_KEY, ACTIVE_CHAT_THREAD_STORAGE_KEY, LEGACY_CHAT_STORAGE_KEY, CHAT_CONTEXT_STORAGE_KEY, STUDENT_NAME_STORAGE_KEY, STUDENT_PROFILES_STORAGE_KEY, LESSON_DAYS_STORAGE_KEY, BRIEFING_CACHE_STORAGE_KEY, INSTRUCTOR_PIN_STORAGE_KEY } from './storageKeys';
+
+
 
 // Status order and labels for session status buttons
 const statusOrder = ['planned', 'in-progress', 'completed'];
@@ -43,34 +51,23 @@ function sanitizeThreadTitle(title, fallback) {
 
 // Max photo size constant
 const STUDENT_PHOTO_MAX_SIZE_BYTES = 3 * 1024 * 1024; // 3MB
-import {
-  initializeData,
-  oralSessions as defaultOralSessions,
-  progressHistory as defaultProgressHistory,
-  syllabus as defaultSyllabus
-} from './data/syllabusData';
-import './App.css';
-import './instructorHours.css';
-
-import { normalizeStudentKey } from './utils/normalizeStudentKey';
-import { readStudentProfiles, writeStudentProfiles } from './utils/studentProfiles';
-import {
-  STORAGE_KEY,
-  NOTES_STORAGE_KEY,
-  CHECKLIST_STORAGE_KEY,
-  RATING_STORAGE_KEY,
-  CHAT_THREADS_STORAGE_KEY,
-  ACTIVE_CHAT_THREAD_STORAGE_KEY,
-  LEGACY_CHAT_STORAGE_KEY,
-  CHAT_CONTEXT_STORAGE_KEY,
-  STUDENT_NAME_STORAGE_KEY,
-  STUDENT_PROFILES_STORAGE_KEY,
-  LESSON_DAYS_STORAGE_KEY,
-  BRIEFING_CACHE_STORAGE_KEY,
-  INSTRUCTOR_PIN_STORAGE_KEY
-} from './storageKeys';
 
 function App() {
+  // --- ADDED STATE FOR STAGE 6 CHECKBOXES ---
+  const [stage6Checked, setStage6Checked] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = window.localStorage.getItem('stage6-checks');
+        return saved ? JSON.parse(saved) : {};
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  });
+
+  // --- ADDED STATE FOR INSTRUCTOR HOURS ERROR ---
+  const [hoursError, setHoursError] = useState('');
 
 
 
@@ -131,26 +128,15 @@ function App() {
     Medical: false,
     'TSA Endorsement': false,
     IACRA: false,
+    'Pre-Solo Aeronautical Knowledge': false,
+    'Pre-Solo Flight Training': false,
+    'Solo-Flight': false,
+    'Solo Cross-Country Flight': false,
+    'Aeronautical Knowledge Test': false,
+    'Flight Proficiency/Practical Test': false,
   });
   const [selectedEndorsement, setSelectedEndorsement] = useState('');
   const [showEndorsementsDropdown, setShowEndorsementsDropdown] = useState(false);
-  const handleEndorsementSelect = (option) => {
-    setShowEndorsementsDropdown(false);
-    setNoteToastMessage(`Selected endorsement: ${option}`);
-  };
-  // Cleaned: Only one progressHistory state declaration allowed
-  const [hoursError, setHoursError] = useState('');
-  const [stage6Checked, setStage6Checked] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = window.localStorage.getItem('stage6-checks');
-        return saved ? JSON.parse(saved) : {};
-      } catch {
-        return {};
-      }
-    }
-    return {};
-  });
   const handleStage6Check = (id) => {
     setStage6Checked((prev) => {
       const next = { ...prev, [id]: !prev[id] };
@@ -630,7 +616,7 @@ function App() {
   const latestOralSession = oralSessions[oralSessions.length - 1] ?? null;
   const latestProgressSnapshot = progressHistory[progressHistory.length - 1] ?? null;
 
-  const isInstrumentComingSoon = selectedRating === 'Instrument - Coming Soon';
+  const isInstrumentComingSoon = selectedRating === 'IFR - Coming Soon';
 
   const phaseProgress = useMemo(() => {
       const total = phasesWithProgress.reduce((sum, phase) => sum + phase.sessions.length, 0);
@@ -1872,8 +1858,25 @@ function App() {
         <section className="hero-card">
           <div className="hero-brand-wrap">
             {/* Logo removed: missing asset. You can add a logo here if desired. */}
-            <span className="hero-logo-text" style={{fontWeight:700,fontSize:'2.2rem',color:'#38bdf8',letterSpacing:'0.04em'}}>CoPi</span>
-            <p className="eyebrow hero-companion-tagline">Your flight training companion</p>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginBottom: 12 }}>
+              <span className="hero-logo-text" style={{
+                fontWeight: 700,
+                fontSize: '2.2rem',
+                color: '#38bdf8',
+                letterSpacing: '0.04em',
+                marginTop: 12,
+                marginBottom: 0,
+                lineHeight: 1.1
+              }}>CoPi</span>
+              <p className="eyebrow hero-companion-tagline" style={{
+                margin: '4px 0 0 2px',
+                textAlign: 'left',
+                fontSize: '1.08rem',
+                letterSpacing: '0.04em',
+                color: '#7dd3fc',
+                fontWeight: 500
+              }}>Your flight training companion</p>
+            </div>
 
             <div className="hero-student-header-box" style={{ background: 'rgba(15,23,42,0.85)', borderRadius: 16, border: '1.5px solid #38bdf8', padding: '32px 32px 36px 32px', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', margin: '96px 0 18px 0', position: 'relative', minHeight: 210 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
@@ -1945,13 +1948,13 @@ function App() {
                       </button>
                       <button
                         type="button"
-                        className={`hero-rating-option ${selectedRating === 'Instrument - Coming Soon' ? 'active' : ''}`}
+                        className={`hero-rating-option ${selectedRating === 'IFR - Coming Soon' ? 'active' : ''}`}
                         onClick={() => {
-                          setSelectedRating('Instrument - Coming Soon');
+                          setSelectedRating('IFR - Coming Soon');
                           setRatingMenuOpen(false);
                         }}
                       >
-                        Instrument - Coming Soon
+                        IFR - Coming Soon
                       </button>
                     </div>
                   ) : null}
@@ -2110,34 +2113,6 @@ function App() {
               </div>
             )}
 
-            {menuOpen && (
-              <div
-                className="hero-menu-dropdown"
-                ref={menuDropdownRef}
-                style={{
-                  zIndex: 9999,
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: 6,
-                  minWidth: 160
-                }}
-              >
-                {instructorMode ? (
-                  <>
-                    <button type="button" onClick={() => { switchUser(); setMenuOpen(false); }}>Switch user</button>
-                    <button type="button" onClick={() => { toggleSettingsDropdown(); setMenuOpen(false); }}>Settings</button>
-                  </>
-                ) : null}
-                <button type="button" onClick={() => { toggleHelpPanel(); setMenuOpen(false); }}>Help</button>
-                <div className="menu-divider"></div>
-                {instructorMode ? (
-                  <button type="button" className="menu-item-warn" onClick={() => { lockInstructorMode(); setMenuOpen(false); }}>🔒 Lock instructor mode</button>
-                ) : (
-                  <button type="button" className="menu-item-instructor" onClick={() => { openInstructorLogin(); setMenuOpen(false); }}>Instructor login</button>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Removed redundant bottom Private Pilot/progress bar box as requested */}
@@ -2331,31 +2306,176 @@ function App() {
                   </button>
                   {showEndorsementsDropdown && (
                     <ul style={{ position: 'absolute', top: '110%', left: '5%', zIndex: 10, background: '#1e293b', border: '1px solid #38bdf8', borderRadius: 8, minWidth: '75vw', width: '75vw', maxWidth: '75vw', padding: 0, margin: 0, listStyle: 'none', boxShadow: '0 2px 8px #0008' }}>
-                      {['Medical', 'TSA Endorsement', 'IACRA'].map((option) => (
-                        <li key={option} style={{ display: 'flex', alignItems: 'center', padding: '4px 0' }}>
-                          <input
-                            type="checkbox"
-                            checked={!!endorsementChecks[option]}
-                            onChange={() => setEndorsementChecks(prev => ({ ...prev, [option]: !prev[option] }))}
-                            style={{ marginRight: 10, accentColor: '#38bdf8', width: 18, height: 18, cursor: 'pointer' }}
-                            id={`endorsement-checkbox-${option}`}
-                          />
-                          <label htmlFor={`endorsement-checkbox-${option}`} style={{ color: '#dbeafe', fontSize: '1rem', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {option}
-                            {option === 'TSA Endorsement' && (
-                              <a
-                                href="https://www.faa.gov/sites/faa.gov/files/pilots/become/student/A_14.pdf"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ color: '#38bdf8', fontWeight: 600, marginLeft: 6, textDecoration: 'underline', fontSize: '0.98em' }}
-                                title="View A.14 TSA Endorsement PDF"
-                              >
-                                A.14
-                              </a>
-                            )}
-                          </label>
-                        </li>
-                      ))}
+                      {/* Medical, TSA, IACRA */}
+                      {["Medical", "TSA Endorsement", "IACRA"].map(option => {
+                        return (
+                          <li key={option} style={{ display: 'flex', alignItems: 'center', padding: '4px 0' }}>
+                            <input
+                              type="checkbox"
+                              checked={!!endorsementChecks[option]}
+                              onChange={() => setEndorsementChecks(prev => ({ ...prev, [option]: !prev[option] }))}
+                              style={{ marginRight: 10, accentColor: '#38bdf8', width: 18, height: 18, cursor: 'pointer' }}
+                              id={`endorsement-checkbox-${option}`}
+                            />
+                            <label htmlFor={`endorsement-checkbox-${option}`} style={{ color: '#dbeafe', fontSize: '1rem', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {option}
+                              {option === 'TSA Endorsement' && (
+                                <a
+                                  href="https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_61-65H.pdf"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#38bdf8', fontWeight: 600, marginLeft: 6, textDecoration: 'underline', fontSize: '0.98em' }}
+                                  title="View A.14 TSA Endorsement PDF"
+                                >
+                                  A.14
+                                </a>
+                              )}
+                            </label>
+                          </li>
+                        );
+                      })}
+                      {/* Solo Category */}
+                      <li style={{ padding: '8px 0 2px 0', marginTop: 8, fontWeight: 700, color: '#38bdf8', fontSize: '1.08rem', border: 0 }}>Solo:</li>
+                      {[
+                        'Pre-Solo Aeronautical Knowledge',
+                        'Pre-Solo Flight Training',
+                        'Solo-Flight',
+                      ].map(option => {
+                        // Lock until Phase 2 complete
+                        const phase2 = phasesWithProgress.find(p => p.title && p.title.toLowerCase().includes('phase 2'));
+                        const phase2Complete = phase2 && phase2.sessions.every(s => s.status === 'completed');
+                        const disabled = !phase2Complete;
+                        return (
+                          <li key={option} style={{ display: 'flex', alignItems: 'center', padding: '4px 0' }}>
+                            <input
+                              type="checkbox"
+                              checked={!!endorsementChecks[option]}
+                              onChange={() => setEndorsementChecks(prev => ({ ...prev, [option]: !prev[option] }))}
+                              style={{ marginRight: 10, accentColor: '#38bdf8', width: 18, height: 18, cursor: disabled ? 'not-allowed' : 'pointer' }}
+                              id={`endorsement-checkbox-${option}`}
+                              disabled={disabled}
+                            />
+                            <label htmlFor={`endorsement-checkbox-${option}`} style={{ color: disabled ? '#64748b' : '#dbeafe', fontSize: '1rem', cursor: disabled ? 'not-allowed' : 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {option}
+                              {option === 'Pre-Solo Aeronautical Knowledge' && (
+                                <a
+                                  href="https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_61-65H.pdf"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#38bdf8', fontWeight: 600, marginLeft: 6, textDecoration: 'underline', fontSize: '0.98em' }}
+                                  title="View A.3 Pre-Solo Aeronautical Knowledge PDF"
+                                >
+                                  A.3
+                                </a>
+                              )}
+                              {option === 'Pre-Solo Flight Training' && (
+                                <a
+                                  href="https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_61-65H.pdf"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#38bdf8', fontWeight: 600, marginLeft: 6, textDecoration: 'underline', fontSize: '0.98em' }}
+                                  title="View A.4 Pre-Solo Flight Training PDF"
+                                >
+                                  A.4
+                                </a>
+                              )}
+                              {option === 'Solo-Flight' && (
+                                <a
+                                  href="https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_61-65H.pdf"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#38bdf8', fontWeight: 600, marginLeft: 6, textDecoration: 'underline', fontSize: '0.98em' }}
+                                  title="View A.6 Solo-Flight PDF"
+                                >
+                                  A.6
+                                </a>
+                              )}
+                            </label>
+                          </li>
+                        );
+                      })}
+                      {/* Cross Country Solo Category */}
+                      <li style={{ padding: '8px 0 2px 0', marginTop: 8, fontWeight: 700, color: '#38bdf8', fontSize: '1.08rem', border: 0 }}>Cross Country Solo</li>
+                      {['Solo Cross-Country Flight'].map(option => {
+                        // Lock until Phase 3 complete
+                        const phase3 = phasesWithProgress.find(p => p.title && p.title.toLowerCase().includes('phase 3'));
+                        const phase3Complete = phase3 && phase3.sessions.every(s => s.status === 'completed');
+                        const disabled = !phase3Complete;
+                        return (
+                          <li key={option} style={{ display: 'flex', alignItems: 'center', padding: '4px 0' }}>
+                            <input
+                              type="checkbox"
+                              checked={!!endorsementChecks[option]}
+                              onChange={() => setEndorsementChecks(prev => ({ ...prev, [option]: !prev[option] }))}
+                              style={{ marginRight: 10, accentColor: '#38bdf8', width: 18, height: 18, cursor: disabled ? 'not-allowed' : 'pointer' }}
+                              id={`endorsement-checkbox-${option}`}
+                              disabled={disabled}
+                            />
+                            <label htmlFor={`endorsement-checkbox-${option}`} style={{ color: disabled ? '#64748b' : '#dbeafe', fontSize: '1rem', cursor: disabled ? 'not-allowed' : 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {option}
+                              {option === 'Solo Cross-Country Flight' && (
+                                <a
+                                  href="https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_61-65H.pdf"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#38bdf8', fontWeight: 600, marginLeft: 6, textDecoration: 'underline', fontSize: '0.98em' }}
+                                  title="View A.9 Solo Cross-Country Flight PDF"
+                                >
+                                  A.9
+                                </a>
+                              )}
+                            </label>
+                          </li>
+                        );
+                      })}
+                      {/* Private Pilot Checkride Category */}
+                      <li style={{ padding: '8px 0 2px 0', marginTop: 8, fontWeight: 700, color: '#38bdf8', fontSize: '1.08rem', border: 0 }}>Private Pilot Checkride</li>
+                      {[
+                        'Aeronautical Knowledge Test',
+                        'Flight Proficiency/Practical Test',
+                      ].map(option => {
+                        // Lock until Stage 5 complete
+                        const stage5 = phasesWithProgress.find(p => p.title && p.title.toLowerCase().includes('stage 5'));
+                        const stage5Complete = stage5 && stage5.sessions.every(s => s.status === 'completed');
+                        const disabled = !stage5Complete;
+                        return (
+                          <li key={option} style={{ display: 'flex', alignItems: 'center', padding: '4px 0' }}>
+                            <input
+                              type="checkbox"
+                              checked={!!endorsementChecks[option]}
+                              onChange={() => setEndorsementChecks(prev => ({ ...prev, [option]: !prev[option] }))}
+                              style={{ marginRight: 10, accentColor: '#38bdf8', width: 18, height: 18, cursor: disabled ? 'not-allowed' : 'pointer' }}
+                              id={`endorsement-checkbox-${option}`}
+                              disabled={disabled}
+                            />
+                            <label htmlFor={`endorsement-checkbox-${option}`} style={{ color: disabled ? '#64748b' : '#dbeafe', fontSize: '1rem', cursor: disabled ? 'not-allowed' : 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {option}
+                              {option === 'Aeronautical Knowledge Test' && (
+                                <a
+                                  href="https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=https://www.faa.gov/documentlibrary/media/advisory_circular/ac_61-65J.pdf&ved=2ahUKEwiFmZjq4OKTAxX9OzQIHceaD8gQFnoECBsQAQ&usg=AOvVaw0drORXIWUm9ZNzIG16P00n"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#38bdf8', fontWeight: 600, marginLeft: 6, textDecoration: 'underline', fontSize: '0.98em' }}
+                                  title="View A.32 Aeronautical Knowledge Test PDF"
+                                >
+                                  A.32
+                                </a>
+                              )}
+                              {option === 'Flight Proficiency/Practical Test' && (
+                                <a
+                                  href="https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_61-65H.pdf"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#38bdf8', fontWeight: 600, marginLeft: 6, textDecoration: 'underline', fontSize: '0.98em' }}
+                                  title="View A.33 Flight Proficiency/Practical Test PDF"
+                                >
+                                  A.33
+                                </a>
+                              )}
+                            </label>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>
@@ -3030,7 +3150,21 @@ function App() {
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
           >
             {/* Logo removed: missing asset. You can add a logo here if desired. */}
-            <span className="hero-logo-text" style={{fontWeight:700,fontSize:'2.2rem',color:'#38bdf8',letterSpacing:'0.04em'}}>CoPi</span>
+            <span className="hero-logo-text" style={{
+              fontWeight: 700,
+              fontSize: '2.2rem',
+              color: '#38bdf8',
+              letterSpacing: '0.04em',
+              lineHeight: 1.05,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0
+            }}>
+              <span style={{display:'block',lineHeight:1}}>Co</span>
+              <span style={{display:'block',lineHeight:1}}>Pi</span>
+            </span>
           </button>
           <button
             className={`tab-bubble history-tab ${activeTab === 'history' ? 'active' : ''}`}
